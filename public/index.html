@@ -1,0 +1,112 @@
+<!doctype html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>لوحة التحكم</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1c1f24; --muted:#6b7280; --line:#e5e7eb; --accent:#0f766e; --warn:#b45309; --bad:#b91c1c; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111317; --card:#1b1e24; --text:#eef0f3; --muted:#9aa1ab; --line:#2a2f37; --accent:#2dd4bf; --warn:#f59e0b; --bad:#f87171; } }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,"Segoe UI",Tahoma,sans-serif; }
+  header { padding:16px; display:flex; justify-content:space-between; align-items:center; }
+  h1 { font-size:20px; margin:0; }
+  main { padding:0 16px 40px; max-width:900px; margin:auto; }
+  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:16px; }
+  .stat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; text-align:center; }
+  .stat b { display:block; font-size:22px; }
+  .stat span { color:var(--muted); font-size:12px; }
+  .tabs { display:flex; gap:8px; margin-bottom:12px; }
+  .tabs button { flex:1; }
+  button { border:1px solid var(--line); background:var(--card); color:var(--text); padding:10px 12px; border-radius:10px; font-size:14px; cursor:pointer; }
+  button.on, button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
+  button.danger { color:var(--bad); }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:10px; }
+  .meta { color:var(--muted); font-size:12px; margin-bottom:6px; }
+  .tag { color:var(--warn); font-weight:600; }
+  textarea { width:100%; min-height:80px; border:1px solid var(--line); border-radius:8px; padding:8px; background:var(--bg); color:var(--text); font:inherit; margin:8px 0; }
+  .row { display:flex; gap:8px; }
+  .empty { color:var(--muted); text-align:center; padding:30px; }
+  pre { white-space:pre-wrap; font:inherit; margin:0; }
+  .bubble { padding:8px 10px; border-radius:10px; margin:6px 0; max-width:85%; }
+  .customer { background:var(--bg); }
+  .agent { background:var(--accent); color:#fff; margin-right:auto; }
+  @media (max-width:500px) { .stats { grid-template-columns:repeat(2,1fr); } }
+</style>
+</head>
+<body>
+<header><h1>لوحة تحكم الوكلاء</h1><button onclick="load()">تحديث</button></header>
+<main>
+  <div class="stats" id="stats"></div>
+  <div class="tabs">
+    <button id="t-pending" class="on" onclick="tab('pending')">بانتظار موافقتك</button>
+    <button id="t-convs" onclick="tab('convs')">المحادثات</button>
+    <button id="t-report" onclick="tab('report')">تقرير اليوم</button>
+  </div>
+  <section id="view"></section>
+</main>
+<script>
+let state = null, current = 'pending';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const time = t => t ? new Date(t).toLocaleString('ar-SA', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }) : '';
+
+async function load() {
+  state = await (await fetch('/api/state')).json();
+  const s = state.stats;
+  document.getElementById('stats').innerHTML = [
+    ['رسائل اليوم', s.incoming], ['ردود تلقائية', s.auto], ['موافقات', s.approved], ['معلّق', s.pending]
+  ].map(([l, v]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
+  render();
+}
+function tab(t) {
+  current = t;
+  ['pending','convs','report'].forEach(x => document.getElementById('t-' + x).classList.toggle('on', x === t));
+  render();
+}
+function render() {
+  const v = document.getElementById('view');
+  if (current === 'pending') {
+    v.innerHTML = state.pending.length ? state.pending.map(p => `
+      <div class="card">
+        <div class="meta"><span class="tag">#${p.id} · ${esc(p.category)}</span> — ${esc(p.name)} · ${time(p.at)}</div>
+        <div><b>رسالته:</b> ${esc(p.customerText)}</div>
+        <textarea id="d${p.id}">${esc(p.draft)}</textarea>
+        <div class="row">
+          <button class="primary" onclick="approve(${p.id})">إرسال الرد</button>
+          <button class="danger" onclick="reject(${p.id})">رفض</button>
+        </div>
+      </div>`).join('') : '<div class="empty">ما فيه طلبات تنتظرك 👍</div>';
+  } else if (current === 'convs') {
+    v.innerHTML = state.conversations.length ? state.conversations.map(c => `
+      <div class="card" onclick="openConv('${c.phone}')" style="cursor:pointer">
+        <div class="meta">${esc(c.name)} · ${time(c.last?.at)}</div>
+        <div>${esc(c.last?.text).slice(0, 120)}</div>
+      </div>`).join('') : '<div class="empty">ما فيه محادثات للحين</div>';
+  } else {
+    v.innerHTML = '<div class="card"><button class="primary" onclick="report()">اكتب تقرير اليوم</button><pre id="rep" style="margin-top:12px"></pre></div>';
+  }
+}
+async function openConv(phone) {
+  const c = await (await fetch('/api/conversation/' + phone)).json();
+  document.getElementById('view').innerHTML = `<button onclick="render()">رجوع</button>
+    <div class="card" style="margin-top:10px"><div class="meta">${esc(c.name)}</div>
+    ${c.messages.map(m => `<div class="bubble ${m.role}">${esc(m.text)}</div>`).join('')}</div>`;
+}
+async function approve(id) {
+  const text = document.getElementById('d' + id).value;
+  const r = await (await fetch('/api/approve/' + id, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text }) })).json();
+  alert(r.message); load();
+}
+async function reject(id) {
+  if (!confirm('ترفض هذا الطلب؟')) return;
+  const r = await (await fetch('/api/reject/' + id, { method:'POST' })).json();
+  alert(r.message); load();
+}
+async function report() {
+  const el = document.getElementById('rep'); el.textContent = 'جاري الكتابة...';
+  el.textContent = (await (await fetch('/api/report')).json()).report;
+}
+load(); setInterval(load, 30000);
+</script>
+</body>
+</html>
