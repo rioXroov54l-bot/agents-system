@@ -241,7 +241,7 @@ function auth(req, res, next) {
   if (pass === DASHBOARD_PASSWORD) return next();
   res.set('WWW-Authenticate', 'Basic realm="dashboard"').status(401).send('مطلوب كلمة السر');
 }
-app.use((req, res, next) => (req.path.startsWith('/webhook') || req.path === '/health' ? next() : auth(req, res, next)));
+app.use((req, res, next) => (req.path.startsWith('/webhook') || req.path === '/health' || req.path === '/privacy' ? next() : auth(req, res, next)));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/state', (_req, res) => {
@@ -271,6 +271,14 @@ app.get('/api/report', async (_req, res) => {
   catch (e) { res.status(500).json({ report: 'خطأ: ' + e.message }); }
 });
 app.get('/health', (_req, res) => res.send('ok'));
+app.get('/privacy', (_req, res) => res.type('html').send(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>سياسة الخصوصية</title><body style="font-family:sans-serif;max-width:700px;margin:40px auto;padding:0 16px;line-height:1.8">
+<h1>سياسة الخصوصية</h1>
+<p>يستخدم هذا النظام رسائل واتساب التي يرسلها العملاء إلى النشاط التجاري للرد على استفساراتهم فقط.</p>
+<p>نحفظ رقم المرسل واسمه ونص الرسائل لغرض خدمة العميل ومتابعة الطلبات، ولا نبيعها أو نشاركها مع أي طرف ثالث، باستثناء مزودي الخدمة اللازمين لتشغيل النظام (Meta لواتساب، وAnthropic لمعالجة النص).</p>
+<p>لطلب حذف بياناتك، أرسل رسالة على نفس رقم واتساب تطلب فيها الحذف، وسيتم حذفها.</p>
+<h2>Privacy Policy</h2>
+<p>This system uses WhatsApp messages that customers send to the business solely to respond to their inquiries. We store the sender's number, name and message text for customer service. We do not sell or share this data with third parties other than service providers required to operate the system (Meta for WhatsApp, Anthropic for text processing). To request deletion, message the same WhatsApp number asking for deletion.</p>
+</body></html>`));
 
 // تقرير يومي تلقائي (بتوقيت الرياض)
 setInterval(async () => {
