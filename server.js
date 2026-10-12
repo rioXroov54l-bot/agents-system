@@ -241,7 +241,7 @@ function auth(req, res, next) {
   if (pass === DASHBOARD_PASSWORD) return next();
   res.set('WWW-Authenticate', 'Basic realm="dashboard"').status(401).send('مطلوب كلمة السر');
 }
-app.use(['/', '/api'], (req, res, next) => (req.path.startsWith('/webhook') ? next() : auth(req, res, next)));
+app.use((req, res, next) => (req.path.startsWith('/webhook') || req.path === '/health' ? next() : auth(req, res, next)));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/state', (_req, res) => {
