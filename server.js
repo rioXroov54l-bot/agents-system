@@ -29,7 +29,34 @@ fs.mkdirSync(DATA_DIR, { recursive: true });
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
 let db = { conversations: {}, pending: [], log: [], nextId: 1, lastReportDay: '', appointments: [], nextApptId: 1, settings: {}, ownerChat: [], lessons: [] };
 try { db = { ...db, ...JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')) }; } catch (_) {}
-const save = () => fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
+// قاعدة بيانات PostgreSQL (إذا موجودة) + نسخة احتياطية يومية؛ والملف يبقى نسخة محلية
+let pg = null, pgTimer = null;
+async function initDb() {
+  if (!process.env.DATABASE_URL) return;
+  try {
+    const { Pool } = require('pg');
+    pg = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL.includes('railway.internal') ? false : { rejectUnauthorized: false } });
+    await pg.query('CREATE TABLE IF NOT EXISTS app_state (id int PRIMARY KEY, data jsonb NOT NULL, updated_at timestamptz DEFAULT now())');
+    await pg.query('CREATE TABLE IF NOT EXISTS backups (day text PRIMARY KEY, data jsonb NOT NULL, created_at timestamptz DEFAULT now())');
+    const r = await pg.query('SELECT data FROM app_state WHERE id = 1');
+    if (r.rows[0]) db = { ...db, ...r.rows[0].data };
+    else await pg.query('INSERT INTO app_state (id, data) VALUES (1, $1)', [db]);
+    console.log('✅ متصل بقاعدة البيانات');
+  } catch (e) { console.error('⚠️ قاعدة البيانات غير متاحة، أستخدم الملف:', e.message); pg = null; }
+}
+function save() {
+  try { fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2)); } catch (e) { console.error('file', e.message); }
+  if (!pg) return;
+  clearTimeout(pgTimer);
+  pgTimer = setTimeout(async () => {
+    try {
+      await pg.query('UPDATE app_state SET data = $1, updated_at = now() WHERE id = 1', [db]);
+      const day = new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 10);
+      await pg.query('INSERT INTO backups (day, data) VALUES ($1, $2) ON CONFLICT (day) DO UPDATE SET data = $2, created_at = now()', [day, db]);
+      await pg.query("DELETE FROM backups WHERE day < to_char(now() - interval '30 days', 'YYYY-MM-DD')");
+    } catch (e) { console.error('pg save', e.message); }
+  }, 1000);
+}
 const now = () => new Date().toISOString();
 const riyadhDay = (d = new Date()) => new Date(d.getTime() + 3 * 3600e3).toISOString().slice(0, 10);
 const riyadhNow = () => new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 16).replace('T', ' ');
@@ -467,4 +494,4 @@ setInterval(async () => {
 const missing = ['ANTHROPIC_API_KEY', 'WHATSAPP_TOKEN', 'PHONE_NUMBER_ID', 'VERIFY_TOKEN', 'OWNER_PHONE', 'DASHBOARD_PASSWORD']
   .filter(k => !process.env[k]);
 if (missing.length) console.warn('⚠️ إعدادات ناقصة:', missing.join(', '));
-app.listen(PORT, () => console.log('النظام شغال على المنفذ', PORT));
+initDb().finally(() => app.listen(PORT, () => console.log('النظام شغال على المنفذ', PORT, pg ? '(قاعدة بيانات)' : '(ملف)')));
