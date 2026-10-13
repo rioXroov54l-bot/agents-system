@@ -9,6 +9,7 @@ const {
   PORT = 3000,
   ANTHROPIC_API_KEY,
   CLAUDE_MODEL = 'claude-sonnet-5-5',
+  CLAUDE_FAST_MODEL = 'claude-haiku-5-5',
   WHATSAPP_TOKEN,
   PHONE_NUMBER_ID,
   VERIFY_TOKEN,
@@ -26,7 +27,7 @@ const OWNER = OWNER_PHONE.replace(/\D/g, '');
 // ---------- التخزين ----------
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
-let db = { conversations: {}, pending: [], log: [], nextId: 1, lastReportDay: '', appointments: [], nextApptId: 1, settings: {}, ownerChat: [] };
+let db = { conversations: {}, pending: [], log: [], nextId: 1, lastReportDay: '', appointments: [], nextApptId: 1, settings: {}, ownerChat: [], lessons: [] };
 try { db = { ...db, ...JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')) }; } catch (_) {}
 const save = () => fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
 const now = () => new Date().toISOString();
@@ -46,7 +47,7 @@ function addMsg(phone, name, role, text) {
 }
 
 // ---------- Claude ----------
-async function askClaude(system, messages, maxTokens = 800) {
+async function askClaude(system, messages, maxTokens = 800, model = CLAUDE_MODEL) {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {
@@ -54,7 +55,7 @@ async function askClaude(system, messages, maxTokens = 800) {
       'anthropic-version': '2023-06-01',
       'content-type': 'application/json'
     },
-    body: JSON.stringify({ model: CLAUDE_MODEL, max_tokens: maxTokens, system, messages })
+    body: JSON.stringify({ model, max_tokens: maxTokens, system, messages })
   });
   const data = await res.json();
   if (!res.ok) throw new Error('Claude: ' + JSON.stringify(data));
@@ -81,17 +82,50 @@ async function notifyOwner(text) {
 }
 
 // ---------- وكيل المراسلات ----------
-const messagingPrompt = () => `أنت "وكيل المراسلات" لنشاط تجاري، ترد على العملاء في واتساب.
-معلومات النشاط (المصدر الوحيد للمعلومات):
-${businessInfo()}
+const lessonsBlock = () => db.lessons.length
+  ? `\n<owner_examples>\nردود عدّلها صاحب النشاط بنفسه. التزم بأسلوبها ومعلوماتها:\n${db.lessons.slice(-12).map(l => `- العميل: ${l.q}\n  الرد المعتمد: ${l.a}`).join('\n')}\n</owner_examples>` : '';
 
-القواعد:
-- رد بلهجة سعودية مهذبة ومختصرة (سطرين إلى أربعة).
-- لا تخترع أسعاراً أو مواعيد أو خصومات أو معلومات غير موجودة أعلاه.
-- الاستفسارات العامة والترحيب: رد مباشرة (needs_approval=false).
-- طلب سعر، أو حجز/موعد، أو شكوى، أو أي شيء غير مذكور في المعلومات: needs_approval=true، واكتب مسودة رد مقترحة يراجعها صاحب النشاط.
-أرجع JSON فقط بهذا الشكل بدون أي نص آخر:
-{"reply":"نص الرد","needs_approval":true,"category":"استفسار|سعر|موعد|شكوى|أخرى","reason":"سبب مختصر"}`;
+const messagingPrompt = () => `<role>
+أنت "وكيل المراسلات" لنشاط تجاري سعودي. ترد على عملاء واتساب نيابة عن صاحب النشاط، وهدفك: رد سريع ودقيق يحوّل الاستفسار إلى طلب، بدون أي معلومة غير مؤكدة.
+</role>
+<business_info>
+${businessInfo()}
+</business_info>${lessonsBlock()}
+<rules>
+- المصدر الوحيد للحقائق هو business_info و owner_examples. أي سعر أو مدة تنفيذ أو خصم أو توفر أو موعد غير مكتوب هناك = لا تذكره.
+- اللهجة: سعودية مهذبة، جمل قصيرة (2-4 أسطر)، بدون مبالغة ولا وعود. إيموجي واحد كحد أقصى.
+- اسأل سؤالاً واحداً واضحاً يقرّب العميل من الطلب (الكمية، المقاس، المدينة، موعد التسليم) عندما تنقص معلومة.
+- لا تكشف أنك نظام آلي إلا إذا سُئلت مباشرة؛ وإذا سُئلت قل إنك المساعد الرقمي للشركة وصاحب النشاط يتابع.
+- لا تطلب بيانات بنكية أو هوية أبداً.
+</rules>
+<routing>
+needs_approval=false فقط إذا: تحية، أو سؤال جوابه موجود حرفياً في business_info، أو طلب معلومات إضافية من العميل.
+needs_approval=true إذا: سعر أو عرض سعر، موعد أو زيارة، شكوى أو غضب، طلب التحدث مع شخص، طلب خارج نطاق النشاط، أو أي شك.
+في حالة needs_approval=true اكتب مسودة جاهزة للإرسال يراجعها صاحب النشاط، وضع [ ] مكان أي رقم غير معروف.
+</routing>
+<output>
+JSON فقط:
+{"reply":"نص الرد","needs_approval":true,"category":"استفسار|سعر|موعد|شكوى|تحويل|أخرى","reason":"سبب مختصر","customer_need":"ماذا يريد العميل في جملة"}
+</output>`;
+
+// مراجع الجودة: يفحص أي رد تلقائي قبل إرساله
+async function qaCheck(reply, customerText) {
+  try {
+    const r = parseJson(await askClaude(
+      `أنت "مراجع الجودة". تفحص رداً سيُرسل لعميل واتساب تلقائياً بدون مراجعة بشرية.
+<business_info>
+${businessInfo()}
+</business_info>
+ارفض الرد (ok=false) إذا: ذكر أي رقم أو سعر أو مدة أو خصم أو وعد غير موجود حرفياً في business_info، أو كان غير لائق أو طويلاً جداً، أو لم يجب على العميل، أو احتوى معلومة مخترعة.
+أرجع JSON فقط: {"ok":true,"issue":""}`,
+      [{ role: 'user', content: `رسالة العميل: ${customerText}\n\nالرد المقترح: ${reply}` }], 200, CLAUDE_FAST_MODEL
+    ));
+    return r || { ok: false, issue: 'تعذر الفحص' };
+  } catch (e) {
+    console.error('qa', e.message);
+    return { ok: false, issue: 'تعذر الفحص' };
+  }
+}
 
 async function handleCustomer(phone, name, text) {
   addMsg(phone, name, 'customer', text);
@@ -100,7 +134,6 @@ async function handleCustomer(phone, name, text) {
     role: m.role === 'customer' ? 'user' : 'assistant',
     content: m.text
   }));
-  // دمج الرسائل المتتالية من نفس الطرف
   const merged = [];
   for (const m of history) {
     if (merged.length && merged[merged.length - 1].role === m.role) merged[merged.length - 1].content += '\n' + m.content;
@@ -109,13 +142,19 @@ async function handleCustomer(phone, name, text) {
   while (merged.length && merged[0].role !== 'user') merged.shift();
 
   let result;
-  try {
-    result = parseJson(await askClaude(messagingPrompt(), merged));
-  } catch (e) {
-    console.error(e.message);
-  }
+  try { result = parseJson(await askClaude(messagingPrompt(), merged)); }
+  catch (e) { console.error(e.message); }
   if (!result || !result.reply) {
     result = { reply: '', needs_approval: true, category: 'أخرى', reason: 'تعذر توليد رد تلقائي' };
+  }
+
+  if (!result.needs_approval) {
+    const qa = await qaCheck(result.reply, text);
+    if (!qa.ok) {
+      result.needs_approval = true;
+      result.reason = 'أوقفه مراجع الجودة: ' + (qa.issue || 'غير مؤكد');
+      addLog('qa_block', `مراجع الجودة أوقف رداً لـ ${name || phone}: ${qa.issue}`);
+    }
   }
 
   if (!result.needs_approval) {
@@ -125,12 +164,13 @@ async function handleCustomer(phone, name, text) {
   } else {
     const item = {
       id: db.nextId++, phone, name: name || phone, customerText: text,
-      draft: result.reply, category: result.category, reason: result.reason, at: now()
+      draft: result.reply, category: result.category, reason: result.reason,
+      need: result.customer_need || '', at: now()
     };
     db.pending.push(item);
     addLog('pending', `طلب موافقة #${item.id} (${item.category}) من ${item.name}`);
     await notifyOwner(
-      `🟡 طلب موافقة #${item.id} — ${item.category}\nمن: ${item.name}\nرسالته: ${text}\n\nالمسودة:\n${item.draft || '(بدون مسودة)'}\n\nرد بـ:\nموافق ${item.id}\nرفض ${item.id}\nعدل ${item.id} النص الجديد`
+      `🟡 طلب موافقة #${item.id} — ${item.category}\nمن: ${item.name}\nرسالته: ${text}${item.need ? `\nيبي: ${item.need}` : ''}\nالسبب: ${item.reason || '—'}\n\nالمسودة:\n${item.draft || '(بدون مسودة)'}\n\nرد بـ:\nموافق ${item.id}\nرفض ${item.id}\nعدل ${item.id} النص الجديد`
     );
   }
   save();
@@ -145,6 +185,11 @@ async function approve(id, editedText) {
   if (!text) return 'المسودة فاضية، استخدم: عدل ' + id + ' النص';
   await sendWhatsApp(p.phone, text);
   addMsg(p.phone, p.name, 'agent', text);
+  if (editedText && editedText.trim() !== (p.draft || '').trim()) {
+    db.lessons.push({ q: p.customerText, a: text, at: now() });
+    db.lessons = db.lessons.slice(-30);
+    addLog('lesson', `تعلّم من تعديلك على #${id}`);
+  }
   db.pending.splice(i, 1);
   addLog('approved', `تمت الموافقة على #${id}`);
   save();
@@ -316,7 +361,9 @@ app.get('/api/state', (_req, res) => {
       incoming: todays.filter(l => l.type === 'in').length,
       auto: todays.filter(l => l.type === 'auto').length,
       approved: todays.filter(l => l.type === 'approved').length,
-      pending: db.pending.length
+      pending: db.pending.length,
+      qaBlocked: todays.filter(l => l.type === 'qa_block').length,
+      lessons: db.lessons.length
     }
   });
 });
