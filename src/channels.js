@@ -76,8 +76,68 @@ async function setupTelegramWebhook() {
 }
 
 // ================= واتساب =================
+// ---------- Evolution API (واتساب غير رسمي برقم السكرتير) ----------
+const evoEnabled = () => !!(C.EVOLUTION_URL && C.EVOLUTION_API_KEY);
+const evoSecret = () => crypto.createHash('sha256').update('evo:' + C.EVOLUTION_API_KEY).digest('hex').slice(0, 32);
+async function evo(method, path, body) {
+  const res = await fetch(`${C.EVOLUTION_URL}${path}`, {
+    method, headers: { apikey: C.EVOLUTION_API_KEY, 'Content-Type': 'application/json' },
+    body: body ? JSON.stringify(body) : undefined, signal: AbortSignal.timeout(30000)
+  });
+  const text = await res.text();
+  let data; try { data = JSON.parse(text); } catch (_) { data = text; }
+  if (!res.ok) { const e = new Error(`Evolution ${res.status}: ${String(typeof data === 'string' ? data : JSON.stringify(data)).slice(0, 300)}`); e.status = res.status; throw e; }
+  return data;
+}
+const waNumber = n => String(n).replace(/@.*/, '').replace(/\D/g, '');
+// واتساب يتعامل مع **عريض** بنجمة وحدة
+const waFormat = s => String(s || '').replace(/\*\*(.+?)\*\*/g, '*$1*');
+
+async function evoSendText(to, text) {
+  const chunks = [];
+  let t = waFormat(text).trim() || '—';
+  while (t.length > 3500) { let cut = t.lastIndexOf('\n', 3500); if (cut < 800) cut = 3500; chunks.push(t.slice(0, cut)); t = t.slice(cut); }
+  chunks.push(t);
+  for (const c of chunks) await evo('POST', `/message/sendText/${C.EVOLUTION_INSTANCE}`, { number: waNumber(to), text: c });
+}
+
+// يتأكد إن نسخة واتساب موجودة ومربوطة بالـ webhook حقنا
+async function setupEvolution() {
+  if (!evoEnabled()) return;
+  const webhook = { enabled: true, url: `${C.INTERNAL_URL || C.PUBLIC_URL}/evolution/${evoSecret()}`, byEvents: false, base64: true, events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'] };
+  try {
+    const list = await evo('GET', '/instance/fetchInstances');
+    const exists = (Array.isArray(list) ? list : []).some(i => (i.name || i.instanceName || (i.instance && i.instance.instanceName)) === C.EVOLUTION_INSTANCE);
+    if (!exists) {
+      await evo('POST', '/instance/create', { instanceName: C.EVOLUTION_INSTANCE, qrcode: true, integration: 'WHATSAPP-BAILEYS', rejectCall: false, groupsIgnore: true, alwaysOnline: false, readMessages: false, syncFullHistory: false, webhook });
+      console.log('✅ أنشأت نسخة واتساب:', C.EVOLUTION_INSTANCE);
+    } else {
+      await evo('POST', `/webhook/set/${C.EVOLUTION_INSTANCE}`, { webhook });
+    }
+    console.log('✅ واتساب (Evolution) جاهز');
+  } catch (e) { console.error('⚠️ Evolution:', e.message); }
+}
+async function evoStatus() {
+  if (!evoEnabled()) return { enabled: false };
+  try {
+    const st = await evo('GET', `/instance/connectionState/${C.EVOLUTION_INSTANCE}`);
+    const state = (st.instance && st.instance.state) || st.state || 'unknown';
+    return { enabled: true, state, connected: state === 'open' };
+  } catch (e) { return { enabled: true, state: 'error', error: e.message.slice(0, 200) }; }
+}
+async function evoQR() {
+  const r = await evo('GET', `/instance/connect/${C.EVOLUTION_INSTANCE}`);
+  return { base64: r.base64 || (r.qrcode && r.qrcode.base64) || null, code: r.code || (r.qrcode && r.qrcode.code) || null, pairingCode: r.pairingCode || null };
+}
+async function evoLogout() { return evo('DELETE', `/instance/logout/${C.EVOLUTION_INSTANCE}`); }
+
+// إرسال واتساب: Evolution إذا مفعّل، وإلا واجهة Meta الرسمية
 async function sendWhatsApp(to, body) {
   if (String(to).startsWith('test')) return;
+  if (evoEnabled()) {
+    try { await evoSendText(to, body); await db.setSetting('whatsapp_status', { ok: true, via: 'evolution', at: new Date().toISOString() }); return; }
+    catch (e) { await db.setSetting('whatsapp_status', { ok: false, via: 'evolution', at: new Date().toISOString(), err: e.message.slice(0, 300) }); throw e; }
+  }
   if (!C.WHATSAPP_TOKEN || !C.PHONE_NUMBER_ID) throw new Error('واتساب غير مفعّل');
   const res = await fetch(`https://graph.facebook.com/${C.GRAPH_VERSION}/${C.PHONE_NUMBER_ID}/messages`, {
     method: 'POST',
@@ -113,14 +173,26 @@ async function sendEmail({ to, subject, body }) {
 // ================= إشعار المالك =================
 // يرسل على تيليجرام أولاً، ولو ما فيه يجرب واتساب
 async function notifyOwner(text, opts = {}) {
-  const id = await ownerTelegramId().catch(() => '');
-  if (tgEnabled() && id) {
-    try { return await tgSend(id, text, opts); } catch (e) { console.error('notify tg', e.message); }
-  }
-  if (C.OWNER_PHONE && C.WHATSAPP_TOKEN) {
-    try { return await sendWhatsApp(C.OWNER_PHONE, String(text).replace(/\*\*/g, '*')); } catch (e) { console.error('notify wa', e.message); }
-  }
-  await db.log('notify', 'تعذر إرسال إشعار: ' + String(text).slice(0, 120));
+  const s = await db.getSettings();
+  const pref = s.notify_channel || 'auto'; // auto | telegram | whatsapp | both
+  const waReady = C.OWNER_PHONE && (evoEnabled() || C.WHATSAPP_TOKEN);
+  const tgId = tgEnabled() ? await ownerTelegramId().catch(() => '') : '';
+  let sent = false;
+  const viaTg = async () => { if (!tgId) return false; try { await tgSend(tgId, text, opts); return true; } catch (e) { console.error('notify tg', e.message); return false; } };
+  const viaWa = async () => {
+    if (!waReady) return false;
+    let t = String(text);
+    if (opts.buttons) { // واتساب ما يدعم أزرار: نحولها لتعليمات نصية
+      const ap = JSON.stringify(opts.buttons).match(/ap:(\d+)/);
+      if (ap) t += `\n\nرد بـ: *موافق ${ap[1]}* أو *رفض ${ap[1]}* أو *عدل ${ap[1]} النص*`;
+    }
+    try { await sendWhatsApp(C.OWNER_PHONE, t); return true; } catch (e) { console.error('notify wa', e.message); return false; }
+  };
+  if (pref === 'telegram') sent = await viaTg() || await viaWa();
+  else if (pref === 'whatsapp') sent = await viaWa() || await viaTg();
+  else if (pref === 'both') { const a = await viaTg(); const b = await viaWa(); sent = a || b; }
+  else sent = await viaTg() || await viaWa();
+  if (!sent) await db.log('notify', 'تعذر إرسال إشعار: ' + String(text).slice(0, 120));
 }
 
 async function notifyMember(member, text, opts = {}) {
@@ -133,4 +205,4 @@ async function notifyMember(member, text, opts = {}) {
   return false;
 }
 
-module.exports = { TG_BASE, tg, tgSend, tgSecret, tgEnabled, ownerTelegramId, setupTelegramWebhook, sendWhatsApp, n8n, n8nReady, sendEmail, notifyOwner, notifyMember };
+module.exports = { evo, evoEnabled, evoSecret, evoStatus, evoQR, evoLogout, setupEvolution, waNumber, TG_BASE, tg, tgSend, tgSecret, tgEnabled, ownerTelegramId, setupTelegramWebhook, sendWhatsApp, n8n, n8nReady, sendEmail, notifyOwner, notifyMember };

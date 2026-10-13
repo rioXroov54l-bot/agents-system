@@ -71,6 +71,13 @@ app.post('/telegram/:secret', (req, res) => {
   tg.handleUpdate(req.body).catch(e => console.error('telegram', e));
 });
 
+// ---------- واتساب عبر Evolution ----------
+app.post('/evolution/:secret', (req, res) => {
+  if (!ch.evoEnabled() || req.params.secret !== ch.evoSecret()) return res.sendStatus(401);
+  res.sendStatus(200);
+  require('./whatsapp').handleEvolution(req.body || {}).catch(e => console.error('evolution', e));
+});
+
 // ---------- n8n ----------
 app.post('/api/n8n/event', async (req, res) => {
   const got = Buffer.from(req.get('x-agents-secret') || ''), want = Buffer.from(C.N8N_SECRET || '');
@@ -158,6 +165,7 @@ app.get('/api/overview', wrap(async (_req, res) => {
     status: {
       telegram: { enabled: ch.tgEnabled(), linked: !!(await ch.ownerTelegramId()), pair_code: ch.tgEnabled() && !(await ch.ownerTelegramId()) ? await tg.ensurePairCode() : null },
       n8n: { enabled: ch.n8nReady(), ...(s.n8n_status || {}) },
+      whatsapp: await ch.evoStatus(),
       shortcut_url: `${C.PUBLIC_URL}/hook/${await shortcutToken()}`,
       profile_set: !!(s.profile && s.profile.name)
     }
@@ -270,12 +278,44 @@ app.post('/api/simulate', wrap(async (req, res) => {
 // الإعدادات
 app.get('/api/settings', wrap(async (_req, res) => {
   const s = await db.getSettings();
-  res.json({ profile: s.profile, budgets: s.budgets, autonomy: s.autonomy, report_hour: s.report_hour, morning_hour: s.morning_hour, weekly_review: s.weekly_review, company: s.company });
+  res.json({ notify_channel: s.notify_channel || 'auto', profile: s.profile, budgets: s.budgets, autonomy: s.autonomy, report_hour: s.report_hour, morning_hour: s.morning_hour, weekly_review: s.weekly_review, company: s.company });
 }));
+app.get('/api/whatsapp', wrap(async (_req, res) => res.json({ ...(await ch.evoStatus()), owner_phone: C.OWNER_PHONE ? '…' + C.OWNER_PHONE.slice(-4) : null }))); 
+app.get('/api/whatsapp/qr', wrap(async (_req, res) => res.json(await ch.evoQR())));
+app.post('/api/whatsapp/logout', wrap(async (_req, res) => { await ch.evoLogout(); res.json({ message: 'انفصل الرقم' }); }));
+
+// ---------- نقل لسيرفر جديد: كود مؤقت + تصدير كامل ----------
+app.post('/api/admin/migrate-code', wrap(async (_req, res) => {
+  const code = crypto.randomBytes(9).toString('base64url');
+  await db.setSetting('migrate', { code, expires: Date.now() + 2 * 3600e3 });
+  res.json({ code, expires_in_minutes: 120 });
+}));
+app.post('/api/admin/export', wrap(async (req, res) => {
+  const m = (await db.getSettings()).migrate || {};
+  const got = Buffer.from(String(req.get('x-migrate-code') || '')), want = Buffer.from(String(m.code || ''));
+  if (!m.code || Date.now() > m.expires || got.length !== want.length || !crypto.timingSafeEqual(got, want)) return res.status(403).json({ error: 'كود النقل غير صحيح أو منتهي' });
+  const SKIP = ['backups', 'execution_entity', 'execution_data', 'execution_metadata', 'execution_annotations', 'execution_annotation_tags', 'insights_raw', 'insights_by_period', 'event_destinations', 'test_run', 'test_case_execution', 'chat_hub_messages'];
+  const out = { exported_at: new Date().toISOString(), source: C.PUBLIC_URL, env: {}, schemas: {} };
+  for (const k of ['ANTHROPIC_API_KEY', 'CLAUDE_MODEL', 'CLAUDE_FAST_MODEL', 'CLAUDE_SMART_MODEL', 'DASHBOARD_PASSWORD', 'TELEGRAM_BOT_TOKEN', 'TELEGRAM_OWNER_ID', 'OWNER_PHONE', 'N8N_SECRET', 'N8N_ENCRYPTION_KEY', 'WHATSAPP_TOKEN', 'PHONE_NUMBER_ID', 'VERIFY_TOKEN', 'APP_SECRET', 'BUSINESS_INFO', 'REPORT_HOUR']) {
+    if (process.env[k]) out.env[k] = process.env[k];
+  }
+  for (const schema of ['public', 'n8n']) {
+    const tables = await db.many("SELECT table_name FROM information_schema.tables WHERE table_schema=$1 AND table_type='BASE TABLE' ORDER BY 1", [schema]);
+    out.schemas[schema] = {};
+    for (const { table_name } of tables) {
+      if (SKIP.includes(table_name)) continue;
+      out.schemas[schema][table_name] = await db.many(`SELECT * FROM "${schema}"."${table_name}"`);
+    }
+  }
+  await db.setSetting('migrate', { code: null, used_at: new Date().toISOString() }); // الكود يستخدم مرة وحدة
+  await db.log('migrate', '📦 تم تصدير البيانات لسيرفر جديد');
+  res.json(out);
+}));
+
 app.post('/api/bills/:id/pay', wrap(async (req, res) => res.json({ message: await T.pay_bill.handler({ id: Number(req.params.id), amount: req.body.amount }) })));
 app.post('/api/shortcut/rotate', wrap(async (_req, res) => { await db.setSetting('shortcut_token', crypto.randomBytes(18).toString('hex')); res.json({ url: `${C.PUBLIC_URL}/hook/${await shortcutToken()}` }); }));
 app.post('/api/settings', wrap(async (req, res) => {
-  const allowed = ['profile', 'budgets', 'autonomy', 'report_hour', 'morning_hour', 'weekly_review', 'company'];
+  const allowed = ['profile', 'budgets', 'autonomy', 'report_hour', 'morning_hour', 'weekly_review', 'company', 'notify_channel'];
   for (const k of allowed) if (req.body[k] !== undefined) await db.setSetting(k, req.body[k]);
   await db.log('settings', 'تحديث الإعدادات');
   res.json({ message: '✅ انحفظت الإعدادات' });
@@ -285,6 +325,7 @@ async function start() {
   await db.connect();
   app.listen(C.PORT, () => console.log('🚀 النظام شغال على المنفذ', C.PORT, '(قاعدة بيانات)'));
   await ch.setupTelegramWebhook();
+  (async () => { for (let i = 0; i < 20; i++) { try { await ch.evo('GET', '/'); break; } catch (_) { if (!ch.evoEnabled()) return; await new Promise(r => setTimeout(r, 15000)); } } await ch.setupEvolution(); })();
   scheduler.start();
   const missing = ['ANTHROPIC_API_KEY', 'DASHBOARD_PASSWORD', 'TELEGRAM_BOT_TOKEN', 'N8N_WEBHOOK_URL', 'N8N_SECRET'].filter(k => !process.env[k]);
   if (missing.length) console.warn('⚠️ إعدادات ناقصة:', missing.join(', '));

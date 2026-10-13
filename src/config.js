@@ -6,6 +6,7 @@ const PUBLIC_URL = (env.PUBLIC_URL || (env.RAILWAY_PUBLIC_DOMAIN ? `https://${en
 module.exports = {
   PORT: env.PORT || 3000,
   PUBLIC_URL,
+  INTERNAL_URL: (env.INTERNAL_URL || '').replace(/\/$/, ''), // عنوان داخلي تستخدمه الخدمات على نفس السيرفر
   DATA_DIR: env.DATA_DIR || './data',
   DATABASE_URL: env.DATABASE_URL || '',
 
@@ -29,6 +30,11 @@ module.exports = {
   // تيليجرام
   TELEGRAM_BOT_TOKEN: env.TELEGRAM_BOT_TOKEN || '',
   TELEGRAM_OWNER_ID: env.TELEGRAM_OWNER_ID || '',
+
+  // واتساب عبر Evolution API (رقم السكرتير)
+  EVOLUTION_URL: (env.EVOLUTION_URL || '').replace(/\/$/, ''),
+  EVOLUTION_API_KEY: env.EVOLUTION_API_KEY || '',
+  EVOLUTION_INSTANCE: env.EVOLUTION_INSTANCE || 'secretary',
 
   // n8n
   N8N_WEBHOOK_URL: env.N8N_WEBHOOK_URL || '',

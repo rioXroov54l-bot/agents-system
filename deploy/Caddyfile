@@ -1,0 +1,12 @@
+{$APP_DOMAIN} {
+	encode gzip
+	reverse_proxy agents:3000
+}
+
+{$N8N_DOMAIN} {
+	reverse_proxy n8n:5678
+}
+
+{$KUMA_DOMAIN} {
+	reverse_proxy uptime-kuma:3001
+}

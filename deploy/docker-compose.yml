@@ -1,0 +1,165 @@
+# سكرتيري — كل الخدمات على سيرفر واحد
+name: sakrtir
+
+x-n8n-env: &n8n-env
+  DB_TYPE: postgresdb
+  DB_POSTGRESDB_HOST: postgres
+  DB_POSTGRESDB_PORT: "5432"
+  DB_POSTGRESDB_DATABASE: agents
+  DB_POSTGRESDB_USER: postgres
+  DB_POSTGRESDB_PASSWORD: ${POSTGRES_PASSWORD}
+  DB_POSTGRESDB_SCHEMA: n8n
+  EXECUTIONS_MODE: queue
+  QUEUE_BULL_REDIS_HOST: redis
+  QUEUE_BULL_REDIS_PORT: "6379"
+  QUEUE_BULL_REDIS_PASSWORD: ${REDIS_PASSWORD}
+  QUEUE_HEALTH_CHECK_ACTIVE: "true"
+  N8N_ENCRYPTION_KEY: ${N8N_ENCRYPTION_KEY}
+  GENERIC_TIMEZONE: Asia/Riyadh
+  TZ: Asia/Riyadh
+  N8N_DIAGNOSTICS_ENABLED: "false"
+  N8N_RUNNERS_ENABLED: "true"
+  N8N_DEFAULT_BINARY_DATA_MODE: database
+  N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS: "true"
+  EXECUTIONS_DATA_PRUNE: "true"
+  EXECUTIONS_DATA_MAX_AGE: "168"
+
+services:
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    ports: ["80:80", "443:443"]
+    environment:
+      APP_DOMAIN: ${APP_DOMAIN}
+      N8N_DOMAIN: ${N8N_DOMAIN}
+      KUMA_DOMAIN: ${KUMA_DOMAIN}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on: [agents]
+
+  postgres:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: agents
+    volumes:
+      - pg_data:/var/lib/postgresql/data
+      - ./init-db.sql:/docker-entrypoint-initdb.d/init-db.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d agents"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--requirepass", "${REDIS_PASSWORD}", "--appendonly", "yes"]
+    volumes: [redis_data:/data]
+    healthcheck:
+      test: ["CMD-SHELL", "redis-cli -a $$REDIS_PASSWORD ping | grep PONG"]
+      interval: 5s
+      retries: 20
+    environment:
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+
+  agents:
+    build: ..
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      PORT: "3000"
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/agents
+      PUBLIC_URL: https://${APP_DOMAIN}
+      INTERNAL_URL: http://agents:3000
+      N8N_WEBHOOK_URL: http://n8n:5678/webhook/agents
+      EVOLUTION_URL: http://evolution:8080
+      DATA_DIR: /data
+      TZ: Asia/Riyadh
+    volumes: [agents_data:/data]
+    depends_on:
+      postgres: { condition: service_healthy }
+
+  n8n:
+    image: n8nio/n8n:${N8N_VERSION:-2.42.7}
+    restart: unless-stopped
+    environment:
+      <<: *n8n-env
+      N8N_HOST: ${N8N_DOMAIN}
+      N8N_PROTOCOL: https
+      N8N_PORT: "5678"
+      WEBHOOK_URL: https://${N8N_DOMAIN}/
+      N8N_EDITOR_BASE_URL: https://${N8N_DOMAIN}/
+      N8N_PROXY_HOPS: "1"
+      OFFLOAD_MANUAL_EXECUTIONS_TO_WORKERS: "true"
+    volumes: [n8n_data:/home/node/.n8n]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  n8n-worker:
+    image: n8nio/n8n:${N8N_VERSION:-2.42.7}
+    restart: unless-stopped
+    command: worker
+    environment:
+      <<: *n8n-env
+      N8N_CONCURRENCY_PRODUCTION_LIMIT: "10"
+    depends_on: [n8n]
+
+  evolution:
+    image: ${EVOLUTION_IMAGE:-evoapicloud/evolution-api:latest}
+    restart: unless-stopped
+    environment:
+      SERVER_TYPE: http
+      SERVER_PORT: "8080"
+      SERVER_URL: http://evolution:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "true"
+      DEL_INSTANCE: "false"
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: evolution
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_LABELS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://:${REDIS_PASSWORD}@redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED: "false"
+      CONFIG_SESSION_PHONE_CLIENT: Sakrtir
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      QRCODE_LIMIT: "30"
+      LOG_LEVEL: ERROR,WARN
+      LANGUAGE: en
+      TZ: Asia/Riyadh
+    volumes: [evolution_instances:/evolution/instances]
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
+
+  uptime-kuma:
+    image: louislam/uptime-kuma:2
+    restart: unless-stopped
+    environment:
+      TZ: Asia/Riyadh
+    volumes: [kuma_data:/app/data]
+
+volumes:
+  caddy_data:
+  caddy_config:
+  pg_data:
+  redis_data:
+  agents_data:
+  n8n_data:
+  evolution_instances:
+  kuma_data:

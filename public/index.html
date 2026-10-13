@@ -344,13 +344,32 @@ async function settings(v) {
     <div class="grid two"><div class="field"><label>ساعة الموجز الصباحي</label><input id="h_m" type="number" min="0" max="23" value="${esc(s.morning_hour)}"></div><div class="field"><label>ساعة ملخص المساء</label><input id="h_r" type="number" min="0" max="23" value="${esc(s.report_hour)}"></div></div>
     <button class="primary" onclick="saveSettings()">حفظ</button>
   </div>
+  <div class="card" id="wacard"><h2>🟢 واتساب (رقم السكرتير)</h2><div id="wabox" class="small">⏳</div></div>
+  <div class="card"><h2>🔔 وين توصلك التنبيهات؟</h2>
+    <select id="n_ch" onchange="api('/api/settings',{notify_channel:this.value}).then(()=>toast('✅ انحفظ'))">
+      ${[['auto','تلقائي (تيليجرام، وإذا ما فيه فواتساب)'],['telegram','تيليجرام'],['whatsapp','واتساب'],['both','الاثنين']].map(([k,l]) => `<option value="${k}" ${(s.notify_channel||'auto')===k?'selected':''}>${l}</option>`).join('')}
+    </select></div>
   <div class="card"><h2>🎙️ سيري ورسائل البنك (اختصارات الآيفون)</h2>
     <div class="small" style="line-height:1.9">رابطك الخاص (لا تشاركه مع أحد):<br><code id="hook">${esc(o.status.shortcut_url)}</code>
     <div style="margin:6px 0"><button class="sm" onclick="navigator.clipboard.writeText($('#hook').textContent);toast('انسخ ✓')">نسخ</button> <button class="sm danger" onclick="rotateHook()">تغيير الرابط</button></div>
     <b>١) اختصار «السكرتير» لسيري:</b> تطبيق الاختصارات ← اختصار جديد ← «إملاء النص» ← «الحصول على محتويات URL» (الرابط فوق، الطريقة POST، نص الطلب JSON: المفتاح <code>text</code> = النص المملى) ← «تحدث بالنص». سمّه «السكرتير» وقل: «يا سيري، السكرتير».<br>
     <b>٢) رسائل البنك تلقائياً:</b> الاختصارات ← الأتمتة ← «الرسالة» ← المرسل يحتوي اسم بنكك ← تشغيل فوري ← «الحصول على محتويات URL» (نفس الرابط، POST، JSON: <code>sms</code> = محتوى الرسالة، <code>sender</code> = المرسل). كررها لكل بنك.</div>
   </div>
+  <div class="card"><h2>📦 النقل لسيرفر جديد</h2><div class="small" style="line-height:1.9">يطلع كود مؤقت (ساعتين، يستخدم مرة وحدة) يحتاجه سكربت التثبيت عشان ينقل بياناتك وإعداداتك.</div>
+    <button class="sm" onclick="api('/api/admin/migrate-code',{}).then(r=>{$('#mcode').innerHTML='الكود: <code>'+r.code+'</code>'})">إنشاء كود نقل</button> <span id="mcode" class="small"></span></div>
   <div class="card small" style="line-height:1.9">🔒 <b>للأمان:</b> السكرتير ما يدفع ولا يحوّل ولا يحفظ كلمات سر أو أرقام بطاقات أو رموز OTP. الدفع دائماً منك عبر الروابط اللي يجهزها لك.</div>`;
+  loadWA(); clearInterval(waTimer); waTimer = setInterval(loadWA, 20000);
+}
+let waTimer = null;
+async function loadWA() {
+  const box = $('#wabox'); if (!box) { clearInterval(waTimer); return; }
+  const w = await api('/api/whatsapp').catch(e => ({ error: e.message }));
+  if (!w.enabled) { box.innerHTML = 'واتساب عبر Evolution غير مفعّل على هذا السيرفر.'; return; }
+  if (w.connected) { box.innerHTML = `✅ <b>متصل</b> — كلم سكرتيرك من رقمك ${w.owner_phone ? '(المسجل: ' + esc(w.owner_phone) + ')' : '<span style="color:var(--bad)">(حدد OWNER_PHONE)</span>'} على رقم السكرتير.<div style="margin-top:8px"><button class="sm danger" onclick="if(confirm('تفصل رقم السكرتير؟'))api('/api/whatsapp/logout',{}).then(loadWA)">فصل الرقم</button></div>`; return; }
+  const q = await api('/api/whatsapp/qr').catch(e => ({ error: e.message }));
+  box.innerHTML = `الحالة: ${esc(w.state)}<br><b>اربط رقم السكرتير:</b> افتح واتساب على جوال رقم السكرتير ← الإعدادات ← الأجهزة المرتبطة ← ربط جهاز ← امسح الرمز:<br>` +
+    (q.base64 ? `<img src="${q.base64.startsWith('data:') ? q.base64 : 'data:image/png;base64,' + q.base64}" style="width:260px;max-width:100%;background:#fff;padding:8px;border-radius:12px;margin-top:8px">` : `<div style="color:var(--bad)">${esc(q.error || 'ما طلع رمز، جرب تحديث')}</div>`) +
+    `<div class="small">الرمز يتجدد تلقائياً كل 20 ثانية.</div>`;
 }
 async function saveSettings() {
   await api('/api/settings', {
