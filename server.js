@@ -26,11 +26,14 @@ const OWNER = OWNER_PHONE.replace(/\D/g, '');
 // ---------- التخزين ----------
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
-let db = { conversations: {}, pending: [], log: [], nextId: 1, lastReportDay: '' };
+let db = { conversations: {}, pending: [], log: [], nextId: 1, lastReportDay: '', appointments: [], nextApptId: 1, settings: {}, ownerChat: [] };
 try { db = { ...db, ...JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')) }; } catch (_) {}
 const save = () => fs.writeFileSync(DATA_FILE, JSON.stringify(db, null, 2));
 const now = () => new Date().toISOString();
 const riyadhDay = (d = new Date()) => new Date(d.getTime() + 3 * 3600e3).toISOString().slice(0, 10);
+const riyadhNow = () => new Date(Date.now() + 3 * 3600e3).toISOString().slice(0, 16).replace('T', ' ');
+const fmtRiyadh = iso => new Date(new Date(iso).getTime() + 3 * 3600e3).toISOString().slice(0, 16).replace('T', ' ');
+const businessInfo = () => (db.settings.businessInfo || BUSINESS_INFO || '(لم تُضف معلومات بعد)');
 function addLog(type, text) {
   db.log.push({ type, text, at: now() });
   if (db.log.length > 2000) db.log = db.log.slice(-2000);
@@ -64,6 +67,7 @@ function parseJson(text) {
 
 // ---------- واتساب ----------
 async function sendWhatsApp(to, body) {
+  if (String(to).startsWith('test')) return; // محادثة تجريبية من لوحة التحكم
   const res = await fetch(`https://graph.facebook.com/${GRAPH_VERSION}/${PHONE_NUMBER_ID}/messages`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
@@ -77,9 +81,9 @@ async function notifyOwner(text) {
 }
 
 // ---------- وكيل المراسلات ----------
-const MESSAGING_PROMPT = `أنت "وكيل المراسلات" لنشاط تجاري، ترد على العملاء في واتساب.
+const messagingPrompt = () => `أنت "وكيل المراسلات" لنشاط تجاري، ترد على العملاء في واتساب.
 معلومات النشاط (المصدر الوحيد للمعلومات):
-${BUSINESS_INFO || '(لم تُضف معلومات بعد)'}
+${businessInfo()}
 
 القواعد:
 - رد بلهجة سعودية مهذبة ومختصرة (سطرين إلى أربعة).
@@ -106,7 +110,7 @@ async function handleCustomer(phone, name, text) {
 
   let result;
   try {
-    result = parseJson(await askClaude(MESSAGING_PROMPT, merged));
+    result = parseJson(await askClaude(messagingPrompt(), merged));
   } catch (e) {
     console.error(e.message);
   }
@@ -159,40 +163,96 @@ function reject(id) {
 async function makeReport() {
   const today = riyadhDay();
   const todays = db.log.filter(l => riyadhDay(new Date(l.at)) === today);
-  const input = `سجل اليوم (${today}):\n${todays.map(l => `[${l.type}] ${l.text}`).join('\n') || 'لا يوجد نشاط'}\n\nطلبات معلقة:\n${db.pending.map(p => `#${p.id} ${p.category} من ${p.name}: ${p.customerText}`).join('\n') || 'لا يوجد'}`;
+  const input = `سجل اليوم (${today}):\n${todays.map(l => `[${l.type}] ${l.text}`).join('\n') || 'لا يوجد نشاط'}\n\nمواعيد اليوم:\n${db.appointments.filter(a => riyadhDay(new Date(a.at)) === today).map(a => `${fmtRiyadh(a.at)} ${a.title}`).join('\n') || 'لا يوجد'}\n\nطلبات معلقة:\n${db.pending.map(p => `#${p.id} ${p.category} من ${p.name}: ${p.customerText}`).join('\n') || 'لا يوجد'}`;
   return askClaude(
     'أنت "وكيل التقارير". اكتب تقريراً يومياً مختصراً بالعربي لصاحب النشاط: عدد الرسائل، أهم الطلبات، المعلق اللي يحتاج قرار، وتوصية واحدة. بدون مقدمات، نقاط قصيرة.',
     [{ role: 'user', content: input }], 600
   );
 }
 
-// ---------- مدير الفريق (رسائل صاحب النشاط) ----------
-async function handleOwner(text) {
+// ---------- السكرتير (المواعيد) ----------
+function addAppointment({ title, datetime, customer, notes }) {
+  const at = new Date(datetime + ':00+03:00');
+  if (isNaN(at)) return 'ما فهمت وقت الموعد، اكتبه مثل: موعد مع أحمد بكرة الساعة 4 العصر';
+  const a = { id: db.nextApptId++, title, customer: customer || '', notes: notes || '', at: at.toISOString(), reminded: false };
+  db.appointments.push(a);
+  db.appointments.sort((x, y) => x.at.localeCompare(y.at));
+  addLog('appt', `موعد جديد #${a.id}: ${title} (${fmtRiyadh(a.at)})`);
+  save();
+  return `📅 انحجز موعد #${a.id}: ${title}\nالوقت: ${fmtRiyadh(a.at)}`;
+}
+function listAppointments() {
+  const up = db.appointments.filter(a => new Date(a.at) > Date.now() - 3600e3);
+  return up.length ? '📅 المواعيد القادمة:\n' + up.map(a => `#${a.id} ${fmtRiyadh(a.at)} — ${a.title}`).join('\n') : 'ما فيه مواعيد قادمة';
+}
+function cancelAppointment(id) {
+  const i = db.appointments.findIndex(a => a.id === Number(id));
+  if (i < 0) return 'ما لقيت موعد بهذا الرقم';
+  const [a] = db.appointments.splice(i, 1);
+  addLog('appt', `إلغاء موعد #${a.id}`);
+  save();
+  return `🗑️ انلغى موعد #${a.id}: ${a.title}`;
+}
+
+// ---------- وكيل التنفيذ ----------
+async function execute(task) {
+  addLog('exec', `مهمة تنفيذ: ${task.slice(0, 80)}`);
+  return askClaude(
+    `أنت "وكيل التنفيذ" لنشاط تجاري. تجهّز المطلوب كاملاً وجاهزاً للاستخدام: عروض أسعار، رسائل للعملاء، منشورات، نصوص مواقع، ردود رسمية، قوائم مهام.
+معلومات النشاط:
+${businessInfo()}
+لا تخترع أسعاراً أو أرقاماً غير معطاة؛ ضع [ ] مكان أي معلومة ناقصة. اكتب بالعربي ما لم يُطلب غير ذلك.`,
+    [{ role: 'user', content: task }], 2000
+  );
+}
+
+// ---------- مدير الفريق ----------
+async function runOwner(text) {
   const t = text.trim();
   let m;
-  try {
-    if ((m = t.match(/^موافق\s+(\d+)/))) return notifyOwner(await approve(m[1]));
-    if ((m = t.match(/^رفض\s+(\d+)/))) return notifyOwner(reject(m[1]));
-    if ((m = t.match(/^عدل\s+(\d+)\s+([\s\S]+)/))) return notifyOwner(await approve(m[1], m[2]));
-    if (/^تقرير/.test(t)) return notifyOwner('📊 ' + await makeReport());
-    if (/^(المعلق|طلبات)/.test(t)) {
-      return notifyOwner(db.pending.length
-        ? db.pending.map(p => `#${p.id} ${p.category} — ${p.name}: ${p.customerText}`).join('\n')
-        : 'ما فيه طلبات معلقة 👍');
-    }
-    const context = `طلبات معلقة: ${db.pending.length}\nآخر النشاط:\n${db.log.slice(-15).map(l => l.text).join('\n')}`;
-    const reply = await askClaude(
-      `أنت "مدير الفريق" لصاحب النشاط. تشرف على وكيل المراسلات ووكيل التقارير.
-الأوامر المتاحة له: "موافق رقم"، "رفض رقم"، "عدل رقم النص"، "تقرير"، "المعلق".
-جاوبه باختصار بالعربي، ووجهه للأمر المناسب إذا طلب شيء ينفذ بأمر. لا تدّعي أنك نفذت شيئاً لم يُنفذ.
-${context}`,
-      [{ role: 'user', content: t }], 500
-    );
-    return notifyOwner(reply);
-  } catch (e) {
-    console.error(e.message);
-    return notifyOwner('صار خطأ: ' + e.message.slice(0, 200));
+  if ((m = t.match(/^موافق\s+(\d+)/))) return approve(m[1]);
+  if ((m = t.match(/^رفض\s+(\d+)/))) return reject(m[1]);
+  if ((m = t.match(/^عدل\s+(\d+)\s+([\s\S]+)/))) return approve(m[1], m[2]);
+  if (/^تقرير/.test(t)) return '📊 ' + await makeReport();
+  if (/^(المعلق|طلبات)/.test(t)) {
+    return db.pending.length
+      ? db.pending.map(p => `#${p.id} ${p.category} — ${p.name}: ${p.customerText}`).join('\n')
+      : 'ما فيه طلبات معلقة 👍';
   }
+  if (/^(المواعيد|مواعيدي)/.test(t)) return listAppointments();
+  if ((m = t.match(/^الغ(?:ي|اء)\s+موعد\s+(\d+)/))) return cancelAppointment(m[1]);
+
+  const decision = parseJson(await askClaude(
+    `أنت "مدير الفريق" لصاحب النشاط. تستقبل أوامره وتوزعها على الفريق:
+- السكرتير: يحجز المواعيد ويعرضها ويلغيها.
+- وكيل التنفيذ: يجهّز عروض أسعار، رسائل، منشورات، نصوص، ملفات نصية.
+- وكيل التقارير: تقرير اليوم.
+- وكيل المراسلات: يرد على العملاء، والطلبات اللي تحتاج موافقة تظهر برقم (موافق رقم / رفض رقم / عدل رقم النص).
+الوقت الحالي بتوقيت الرياض: ${riyadhNow()}
+طلبات معلقة: ${db.pending.length} | مواعيد قادمة: ${db.appointments.filter(a => new Date(a.at) > Date.now()).length}
+أرجع JSON فقط بأحد الأشكال:
+{"action":"add_appointment","title":"عنوان مختصر","datetime":"YYYY-MM-DDTHH:mm","customer":"اسم أو رقم إن وجد","notes":""}
+{"action":"list_appointments"}
+{"action":"cancel_appointment","id":3}
+{"action":"report"}
+{"action":"execute","task":"وصف المهمة كاملاً"}
+{"action":"reply","text":"ردك المختصر بالعربي"}
+لا تدّعي تنفيذ شيء لم يُنفذ. إذا كان وقت الموعد ناقصاً استخدم reply واسأل عنه.`,
+    [{ role: 'user', content: t }], 600
+  ));
+  if (!decision) return 'ما فهمت الطلب، جرّب تكتبه بشكل ثاني';
+  switch (decision.action) {
+    case 'add_appointment': return addAppointment(decision);
+    case 'list_appointments': return listAppointments();
+    case 'cancel_appointment': return cancelAppointment(decision.id);
+    case 'report': return '📊 ' + await makeReport();
+    case 'execute': return '🛠️ ' + await execute(decision.task || t);
+    default: return decision.text || 'تمام';
+  }
+}
+async function handleOwner(text) {
+  try { await notifyOwner(await runOwner(text)); }
+  catch (e) { console.error(e.message); await notifyOwner('صار خطأ: ' + e.message.slice(0, 200)); }
 }
 
 // ---------- السيرفر ----------
@@ -270,6 +330,42 @@ app.get('/api/report', async (_req, res) => {
   try { res.json({ report: await makeReport() }); }
   catch (e) { res.status(500).json({ report: 'خطأ: ' + e.message }); }
 });
+app.post('/api/owner', async (req, res) => {
+  const text = (req.body && req.body.text || '').trim();
+  if (!text) return res.json({ reply: '' });
+  try {
+    const reply = await runOwner(text);
+    db.ownerChat.push({ role: 'owner', text, at: now() }, { role: 'agent', text: reply, at: now() });
+    db.ownerChat = db.ownerChat.slice(-60); save();
+    res.json({ reply });
+  } catch (e) { res.status(500).json({ reply: 'خطأ: ' + e.message.slice(0, 200) }); }
+});
+app.get('/api/owner', (_req, res) => res.json(db.ownerChat));
+app.post('/api/simulate', async (req, res) => {
+  const text = (req.body && req.body.text || '').trim();
+  if (!text) return res.json({});
+  const phone = 'test-' + (req.body.session || 'demo');
+  const before = db.pending.length;
+  try {
+    await handleCustomer(phone, 'عميل تجريبي', text);
+    const c = db.conversations[phone];
+    const last = c.messages[c.messages.length - 1];
+    if (db.pending.length > before) {
+      const p = db.pending[db.pending.length - 1];
+      return res.json({ pending: true, id: p.id, category: p.category, draft: p.draft });
+    }
+    res.json({ reply: last.role === 'agent' ? last.text : '' });
+  } catch (e) { res.status(500).json({ error: e.message.slice(0, 200) }); }
+});
+app.get('/api/appointments', (_req, res) => res.json(db.appointments));
+app.post('/api/appointments', (req, res) => res.json({ message: addAppointment(req.body || {}) }));
+app.delete('/api/appointments/:id', (req, res) => res.json({ message: cancelAppointment(req.params.id) }));
+app.get('/api/settings', (_req, res) => res.json({ businessInfo: db.settings.businessInfo || BUSINESS_INFO || '' }));
+app.post('/api/settings', (req, res) => {
+  db.settings.businessInfo = String((req.body && req.body.businessInfo) || '').slice(0, 8000);
+  addLog('settings', 'تحديث معلومات النشاط'); save();
+  res.json({ message: '✅ انحفظت معلومات النشاط' });
+});
 app.get('/health', (_req, res) => res.send('ok'));
 app.get('/privacy', (_req, res) => res.type('html').send(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>سياسة الخصوصية</title><body style="font-family:sans-serif;max-width:700px;margin:40px auto;padding:0 16px;line-height:1.8">
 <h1>سياسة الخصوصية</h1>
@@ -282,13 +378,20 @@ app.get('/privacy', (_req, res) => res.type('html').send(`<!doctype html><html l
 
 // تقرير يومي تلقائي (بتوقيت الرياض)
 setInterval(async () => {
+  for (const a of db.appointments) {
+    const diff = new Date(a.at) - Date.now();
+    if (!a.reminded && diff > 0 && diff <= 60 * 60e3) {
+      a.reminded = true; save();
+      await notifyOwner(`⏰ تذكير: بعد أقل من ساعة\n#${a.id} ${a.title}\nالوقت: ${fmtRiyadh(a.at)}`);
+    }
+  }
   const riyadhHour = (new Date().getUTCHours() + 3) % 24;
   const day = riyadhDay();
   if (riyadhHour === Number(REPORT_HOUR) && db.lastReportDay !== day) {
     db.lastReportDay = day; save();
     try { await notifyOwner('📊 تقرير اليوم\n' + await makeReport()); } catch (e) { console.error(e.message); }
   }
-}, 5 * 60 * 1000);
+}, 60 * 1000);
 
 const missing = ['ANTHROPIC_API_KEY', 'WHATSAPP_TOKEN', 'PHONE_NUMBER_ID', 'VERIFY_TOKEN', 'OWNER_PHONE', 'DASHBOARD_PASSWORD']
   .filter(k => !process.env[k]);

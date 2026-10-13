@@ -3,110 +3,154 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>لوحة التحكم</title>
+<title>لوحة الوكلاء</title>
 <style>
-  :root { --bg:#f5f6f8; --card:#fff; --text:#1c1f24; --muted:#6b7280; --line:#e5e7eb; --accent:#0f766e; --warn:#b45309; --bad:#b91c1c; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#111317; --card:#1b1e24; --text:#eef0f3; --muted:#9aa1ab; --line:#2a2f37; --accent:#2dd4bf; --warn:#f59e0b; --bad:#f87171; } }
+  :root { --bg:#f5f6f8; --card:#fff; --text:#1c1f24; --muted:#6b7280; --line:#e5e7eb; --accent:#0f766e; --warn:#b45309; --bad:#b91c1c; --soft:#eef7f6; }
+  @media (prefers-color-scheme: dark) { :root { --bg:#111317; --card:#1b1e24; --text:#eef0f3; --muted:#9aa1ab; --line:#2a2f37; --accent:#2dd4bf; --warn:#f59e0b; --bad:#f87171; --soft:#16302d; } }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,"Segoe UI",Tahoma,sans-serif; }
-  header { padding:16px; display:flex; justify-content:space-between; align-items:center; }
+  header { padding:16px; display:flex; justify-content:space-between; align-items:center; max-width:960px; margin:auto; }
   h1 { font-size:20px; margin:0; }
-  main { padding:0 16px 40px; max-width:900px; margin:auto; }
-  .stats { display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-bottom:16px; }
+  main { padding:0 16px 40px; max-width:960px; margin:auto; }
+  .stats { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:14px; }
   .stat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; text-align:center; }
   .stat b { display:block; font-size:22px; }
   .stat span { color:var(--muted); font-size:12px; }
-  .tabs { display:flex; gap:8px; margin-bottom:12px; }
-  .tabs button { flex:1; }
-  button { border:1px solid var(--line); background:var(--card); color:var(--text); padding:10px 12px; border-radius:10px; font-size:14px; cursor:pointer; }
+  .tabs { display:flex; gap:6px; margin-bottom:12px; overflow-x:auto; padding-bottom:4px; }
+  .tabs button { white-space:nowrap; }
+  button { border:1px solid var(--line); background:var(--card); color:var(--text); padding:9px 12px; border-radius:10px; font-size:14px; cursor:pointer; font-family:inherit; }
   button.on, button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
   button.danger { color:var(--bad); }
   .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:10px; }
   .meta { color:var(--muted); font-size:12px; margin-bottom:6px; }
   .tag { color:var(--warn); font-weight:600; }
-  textarea { width:100%; min-height:80px; border:1px solid var(--line); border-radius:8px; padding:8px; background:var(--bg); color:var(--text); font:inherit; margin:8px 0; }
-  .row { display:flex; gap:8px; }
+  textarea, input { width:100%; border:1px solid var(--line); border-radius:8px; padding:9px; background:var(--bg); color:var(--text); font:inherit; }
+  textarea { min-height:80px; margin:8px 0; }
+  .row { display:flex; gap:8px; align-items:center; }
+  .row input { flex:1; }
   .empty { color:var(--muted); text-align:center; padding:30px; }
   pre { white-space:pre-wrap; font:inherit; margin:0; }
-  .bubble { padding:8px 10px; border-radius:10px; margin:6px 0; max-width:85%; }
-  .customer { background:var(--bg); }
-  .agent { background:var(--accent); color:#fff; margin-right:auto; }
-  @media (max-width:500px) { .stats { grid-template-columns:repeat(2,1fr); } }
+  .chat { max-height:55vh; overflow-y:auto; display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
+  .bubble { padding:9px 12px; border-radius:12px; max-width:85%; white-space:pre-wrap; line-height:1.6; }
+  .me, .customer { background:var(--soft); align-self:flex-start; }
+  .agent { background:var(--accent); color:#fff; align-self:flex-end; }
+  .note { background:transparent; border:1px dashed var(--warn); color:var(--warn); align-self:center; font-size:13px; }
+  .hint { color:var(--muted); font-size:13px; margin:0 0 10px; line-height:1.7; }
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
+  .chips button { font-size:12px; padding:6px 10px; }
+  @media (max-width:600px) { .stats { grid-template-columns:repeat(3,1fr); } }
 </style>
 </head>
 <body>
-<header><h1>لوحة تحكم الوكلاء</h1><button onclick="load()">تحديث</button></header>
+<header><h1>لوحة الوكلاء</h1><button onclick="load().then(render)">تحديث</button></header>
 <main>
   <div class="stats" id="stats"></div>
-  <div class="tabs">
-    <button id="t-pending" class="on" onclick="tab('pending')">بانتظار موافقتك</button>
-    <button id="t-convs" onclick="tab('convs')">المحادثات</button>
-    <button id="t-report" onclick="tab('report')">تقرير اليوم</button>
-  </div>
+  <div class="tabs" id="tabs"></div>
   <section id="view"></section>
 </main>
 <script>
-let state = null, current = 'pending';
+const TABS = [['manager','🧠 مدير الفريق'],['pending','🟡 الموافقات'],['appts','📅 المواعيد'],['test','🧪 تجربة عميل'],['convs','💬 المحادثات'],['report','📊 التقرير'],['settings','⚙️ معلومات النشاط']];
+let state = null, current = 'manager', ownerChat = null, testChat = [];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const time = t => t ? new Date(t).toLocaleString('ar-SA', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }) : '';
+async function api(url, body, method) {
+  const opts = (body !== undefined || method) ? { method: method || 'POST', headers: {'Content-Type':'application/json'}, body: body !== undefined ? JSON.stringify(body) : undefined } : {};
+  return (await fetch(url, opts)).json();
+}
 
 async function load() {
-  state = await (await fetch('/api/state')).json();
-  const s = state.stats;
+  state = await api('/api/state');
+  state.appts = await api('/api/appointments');
+  const s = state.stats, upcoming = state.appts.filter(a => new Date(a.at) > Date.now()).length;
   document.getElementById('stats').innerHTML = [
-    ['رسائل اليوم', s.incoming], ['ردود تلقائية', s.auto], ['موافقات', s.approved], ['معلّق', s.pending]
+    ['رسائل اليوم', s.incoming], ['ردود تلقائية', s.auto], ['موافقات', s.approved], ['معلّق', s.pending], ['مواعيد قادمة', upcoming]
   ].map(([l, v]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
-  render();
+  document.getElementById('tabs').innerHTML = TABS.map(([k, l]) => `<button class="${k === current ? 'on' : ''}" onclick="tab('${k}')">${l}</button>`).join('');
 }
-function tab(t) {
-  current = t;
-  ['pending','convs','report'].forEach(x => document.getElementById('t-' + x).classList.toggle('on', x === t));
-  render();
-}
-function render() {
+async function tab(t) { current = t; await load(); render(); }
+
+async function render() {
   const v = document.getElementById('view');
-  if (current === 'pending') {
+  if (current === 'manager') {
+    if (!ownerChat) ownerChat = await api('/api/owner');
+    v.innerHTML = `<div class="card">
+      <p class="hint">اكتب أوامرك هنا بشكل طبيعي، والمدير يوزعها على الفريق. نفس الأوامر تشتغل من واتساب أول ما ينفك قفل Meta.</p>
+      <div class="chips">${['احجز موعد مع أبو خالد بكرة الساعة 4 العصر','المواعيد','جهز عرض سعر لـ 50 قطعة','اكتب رسالة ترحيب للعملاء الجدد','تقرير'].map(x => `<button onclick="send('${x}')">${x}</button>`).join('')}</div>
+      <div class="chat" id="chat">${ownerChat.map(m => `<div class="bubble ${m.role === 'owner' ? 'me' : 'agent'}">${esc(m.text)}</div>`).join('') || '<div class="empty">ابدأ بأمر…</div>'}</div>
+      <div class="row"><input id="msg" placeholder="مثال: ذكرني أتصل بالمورد الخميس الساعة 10 الصبح" onkeydown="if(event.key==='Enter')send()"><button class="primary" onclick="send()">إرسال</button></div></div>`;
+    scrollChat();
+  } else if (current === 'pending') {
     v.innerHTML = state.pending.length ? state.pending.map(p => `
       <div class="card">
         <div class="meta"><span class="tag">#${p.id} · ${esc(p.category)}</span> — ${esc(p.name)} · ${time(p.at)}</div>
         <div><b>رسالته:</b> ${esc(p.customerText)}</div>
+        ${p.reason ? `<div class="meta" style="margin-top:6px">السبب: ${esc(p.reason)}</div>` : ''}
         <textarea id="d${p.id}">${esc(p.draft)}</textarea>
-        <div class="row">
-          <button class="primary" onclick="approve(${p.id})">إرسال الرد</button>
-          <button class="danger" onclick="reject(${p.id})">رفض</button>
-        </div>
+        <div class="row"><button class="primary" onclick="approve(${p.id})">إرسال الرد</button><button class="danger" onclick="reject(${p.id})">رفض</button></div>
       </div>`).join('') : '<div class="empty">ما فيه طلبات تنتظرك 👍</div>';
+  } else if (current === 'appts') {
+    v.innerHTML = `<div class="card"><p class="hint">تقدر تضيف موعد من هنا، أو تكتبه للمدير بكلامك. يوصلك تذكير على واتساب قبل الموعد بساعة.</p>
+      <div class="row" style="flex-wrap:wrap"><input id="at" type="datetime-local" style="flex:0 0 220px"><input id="tt" placeholder="عنوان الموعد"><button class="primary" onclick="addAppt()">إضافة</button></div></div>
+      ${state.appts.length ? state.appts.map(a => `<div class="card row" style="justify-content:space-between">
+        <div><b>${esc(a.title)}</b><div class="meta">#${a.id} · ${time(a.at)} ${a.customer ? '· ' + esc(a.customer) : ''} ${new Date(a.at) < Date.now() ? '· انتهى' : ''}</div></div>
+        <button class="danger" onclick="delAppt(${a.id})">إلغاء</button></div>`).join('') : '<div class="empty">ما فيه مواعيد</div>'}`;
+  } else if (current === 'test') {
+    v.innerHTML = `<div class="card">
+      <p class="hint">جرّب وكيل المراسلات كأنك عميل، بدون واتساب. الأسئلة العامة يرد عليها لحاله، والأسعار والمواعيد والشكاوى تروح لتبويب <b>الموافقات</b>.</p>
+      <div class="chips">${['السلام عليكم','وش تسوون؟','كم سعر القطعة؟','أبي أحجز موعد زيارة','عندي شكوى على الطلب'].map(x => `<button onclick="sim('${x}')">${x}</button>`).join('')}</div>
+      <div class="chat" id="chat">${testChat.map(m => `<div class="bubble ${m.r}">${esc(m.t)}</div>`).join('') || '<div class="empty">اكتب رسالة كأنك عميل…</div>'}</div>
+      <div class="row"><input id="msg" placeholder="اكتب رسالة العميل" onkeydown="if(event.key==='Enter')sim()"><button class="primary" onclick="sim()">إرسال</button></div></div>`;
+    scrollChat();
   } else if (current === 'convs') {
-    v.innerHTML = state.conversations.length ? state.conversations.map(c => `
+    const real = state.conversations.filter(c => !c.phone.startsWith('test'));
+    v.innerHTML = real.length ? real.map(c => `
       <div class="card" onclick="openConv('${c.phone}')" style="cursor:pointer">
-        <div class="meta">${esc(c.name)} · ${time(c.last?.at)}</div>
-        <div>${esc(c.last?.text).slice(0, 120)}</div>
-      </div>`).join('') : '<div class="empty">ما فيه محادثات للحين</div>';
-  } else {
+        <div class="meta">${esc(c.name)} · ${time(c.last?.at)}</div><div>${esc(c.last?.text).slice(0, 120)}</div>
+      </div>`).join('') : '<div class="empty">ما فيه محادثات واتساب للحين</div>';
+  } else if (current === 'report') {
     v.innerHTML = '<div class="card"><button class="primary" onclick="report()">اكتب تقرير اليوم</button><pre id="rep" style="margin-top:12px"></pre></div>';
+  } else if (current === 'settings') {
+    const s = await api('/api/settings');
+    v.innerHTML = `<div class="card"><p class="hint">هذي المعلومات هي <b>المصدر الوحيد</b> اللي يعتمد عليه وكيل المراسلات ووكيل التنفيذ. اكتب: وش تبيعون، المنتجات، أوقات الدوام، الموقع، أرقام التواصل، طريقة الطلب والتوصيل. أي شي مو مكتوب هنا، الوكيل يحوّله لك للموافقة بدل ما يخترع.</p>
+      <textarea id="bi" style="min-height:300px">${esc(s.businessInfo)}</textarea>
+      <button class="primary" onclick="saveSettings()">حفظ</button></div>`;
   }
 }
+function scrollChat() { const c = document.getElementById('chat'); if (c) c.scrollTop = c.scrollHeight; const m = document.getElementById('msg'); if (m) m.focus(); }
+async function send(x) {
+  const el = document.getElementById('msg'), text = (x || el.value).trim(); if (!text) return;
+  ownerChat.push({ role:'owner', text }, { role:'agent', text:'…' }); render();
+  const r = await api('/api/owner', { text });
+  ownerChat[ownerChat.length - 1].text = r.reply; await load(); render();
+}
+async function sim(x) {
+  const el = document.getElementById('msg'), text = (x || el.value).trim(); if (!text) return;
+  testChat.push({ r:'customer', t:text }, { r:'agent', t:'…' }); render();
+  const r = await api('/api/simulate', { text, session:'dash' });
+  testChat.pop();
+  if (r.error) testChat.push({ r:'note', t:'خطأ: ' + r.error });
+  else if (r.pending) testChat.push({ r:'note', t:`🟡 هذي تحتاج موافقتك (${r.category}) — انرسلت لتبويب الموافقات #${r.id}\nالمسودة: ${r.draft || '—'}` });
+  else testChat.push({ r:'agent', t:r.reply || '—' });
+  await load(); render();
+}
 async function openConv(phone) {
-  const c = await (await fetch('/api/conversation/' + phone)).json();
+  const c = await api('/api/conversation/' + phone);
   document.getElementById('view').innerHTML = `<button onclick="render()">رجوع</button>
-    <div class="card" style="margin-top:10px"><div class="meta">${esc(c.name)}</div>
-    ${c.messages.map(m => `<div class="bubble ${m.role}">${esc(m.text)}</div>`).join('')}</div>`;
+    <div class="card" style="margin-top:10px"><div class="meta">${esc(c.name)}</div><div class="chat">
+    ${c.messages.map(m => `<div class="bubble ${m.role}">${esc(m.text)}</div>`).join('')}</div></div>`;
 }
-async function approve(id) {
-  const text = document.getElementById('d' + id).value;
-  const r = await (await fetch('/api/approve/' + id, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ text }) })).json();
-  alert(r.message); load();
+async function approve(id) { const r = await api('/api/approve/' + id, { text: document.getElementById('d' + id).value }); alert(r.message); await load(); render(); }
+async function reject(id) { if (!confirm('ترفض هذا الطلب؟')) return; const r = await api('/api/reject/' + id, {}); alert(r.message); await load(); render(); }
+async function addAppt() {
+  const at = document.getElementById('at').value, title = document.getElementById('tt').value.trim();
+  if (!at || !title) return alert('حدد الوقت والعنوان');
+  const r = await api('/api/appointments', { datetime: at, title }); alert(r.message); await load(); render();
 }
-async function reject(id) {
-  if (!confirm('ترفض هذا الطلب؟')) return;
-  const r = await (await fetch('/api/reject/' + id, { method:'POST' })).json();
-  alert(r.message); load();
-}
-async function report() {
-  const el = document.getElementById('rep'); el.textContent = 'جاري الكتابة...';
-  el.textContent = (await (await fetch('/api/report')).json()).report;
-}
-load(); setInterval(load, 30000);
+async function delAppt(id) { if (!confirm('تلغي الموعد؟')) return; const r = await api('/api/appointments/' + id, undefined, 'DELETE'); alert(r.message); await load(); render(); }
+async function report() { const el = document.getElementById('rep'); el.textContent = 'جاري الكتابة…'; el.textContent = (await api('/api/report')).report; }
+async function saveSettings() { const r = await api('/api/settings', { businessInfo: document.getElementById('bi').value }); alert(r.message); }
+load().then(render);
+setInterval(() => { if (current === 'pending' || current === 'appts') return; load(); }, 30000);
 </script>
 </body>
 </html>
