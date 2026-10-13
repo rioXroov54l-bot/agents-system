@@ -2,14 +2,21 @@
 <html lang="ar" dir="rtl">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>لوحة الوكلاء</title>
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/apple-touch-icon.png">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="الوكلاء">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0f766e">
 <style>
   :root { --bg:#f5f6f8; --card:#fff; --text:#1c1f24; --muted:#6b7280; --line:#e5e7eb; --accent:#0f766e; --warn:#b45309; --bad:#b91c1c; --soft:#eef7f6; }
   @media (prefers-color-scheme: dark) { :root { --bg:#111317; --card:#1b1e24; --text:#eef0f3; --muted:#9aa1ab; --line:#2a2f37; --accent:#2dd4bf; --warn:#f59e0b; --bad:#f87171; --soft:#16302d; } }
   * { box-sizing:border-box; }
   body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,"Segoe UI",Tahoma,sans-serif; }
-  header { padding:16px; display:flex; justify-content:space-between; align-items:center; max-width:960px; margin:auto; }
+  header { padding:16px; padding-top:max(16px, env(safe-area-inset-top)); display:flex; justify-content:space-between; align-items:center; max-width:960px; margin:auto; }
   h1 { font-size:20px; margin:0; }
   main { padding:0 16px 40px; max-width:960px; margin:auto; }
   .stats { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:14px; }

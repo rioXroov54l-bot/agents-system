@@ -301,7 +301,7 @@ function auth(req, res, next) {
   if (pass === DASHBOARD_PASSWORD) return next();
   res.set('WWW-Authenticate', 'Basic realm="dashboard"').status(401).send('مطلوب كلمة السر');
 }
-app.use((req, res, next) => (req.path.startsWith('/webhook') || req.path === '/health' || req.path === '/privacy' ? next() : auth(req, res, next)));
+app.use((req, res, next) => (req.path.startsWith('/webhook') || ['/health','/privacy','/manifest.json','/apple-touch-icon.png','/icon-512.png'].includes(req.path) ? next() : auth(req, res, next)));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/state', (_req, res) => {
