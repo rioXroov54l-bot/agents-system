@@ -74,7 +74,8 @@ async function sendWhatsApp(to, body) {
     headers: { Authorization: `Bearer ${WHATSAPP_TOKEN}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({ messaging_product: 'whatsapp', to, type: 'text', text: { body } })
   });
-  if (!res.ok) throw new Error('WhatsApp: ' + (await res.text()));
+  if (!res.ok) { const err = await res.text(); db.wa = { ok: false, at: now(), err: err.slice(0, 300) }; throw new Error('WhatsApp: ' + err); }
+  db.wa = { ok: true, at: now() };
 }
 async function notifyOwner(text) {
   if (!OWNER) return;
@@ -209,6 +210,7 @@ async function makeReport() {
   const today = riyadhDay();
   const todays = db.log.filter(l => riyadhDay(new Date(l.at)) === today);
   const input = `سجل اليوم (${today}):\n${todays.map(l => `[${l.type}] ${l.text}`).join('\n') || 'لا يوجد نشاط'}\n\nمواعيد اليوم:\n${db.appointments.filter(a => riyadhDay(new Date(a.at)) === today).map(a => `${fmtRiyadh(a.at)} ${a.title}`).join('\n') || 'لا يوجد'}\n\nطلبات معلقة:\n${db.pending.map(p => `#${p.id} ${p.category} من ${p.name}: ${p.customerText}`).join('\n') || 'لا يوجد'}`;
+  addLog('report', 'تقرير');
   return askClaude(
     'أنت "وكيل التقارير". اكتب تقريراً يومياً مختصراً بالعربي لصاحب النشاط: عدد الرسائل، أهم الطلبات، المعلق اللي يحتاج قرار، وتوصية واحدة. بدون مقدمات، نقاط قصيرة.',
     [{ role: 'user', content: input }], 600
@@ -381,6 +383,7 @@ app.post('/api/owner', async (req, res) => {
   const text = (req.body && req.body.text || '').trim();
   if (!text) return res.json({ reply: '' });
   try {
+    addLog('owner', text.slice(0, 80));
     const reply = await runOwner(text);
     db.ownerChat.push({ role: 'owner', text, at: now() }, { role: 'agent', text: reply, at: now() });
     db.ownerChat = db.ownerChat.slice(-60); save();
@@ -403,6 +406,27 @@ app.post('/api/simulate', async (req, res) => {
     }
     res.json({ reply: last.role === 'agent' ? last.text : '' });
   } catch (e) { res.status(500).json({ error: e.message.slice(0, 200) }); }
+});
+app.get('/api/team', (_req, res) => {
+  const today = riyadhDay();
+  const T = db.log.filter(l => riyadhDay(new Date(l.at)) === today);
+  const n = (...types) => T.filter(l => types.includes(l.type)).length;
+  const last = (...types) => { const l = [...db.log].reverse().find(x => types.includes(x.type)); return l ? l.at : null; };
+  const upcoming = db.appointments.filter(a => new Date(a.at) > Date.now());
+  res.json({
+    whatsapp: db.wa || null,
+    hasInfo: !!(db.settings.businessInfo || BUSINESS_INFO),
+    agents: [
+      { key: 'manager', icon: '🧠', name: 'مدير الفريق', role: 'يستقبل أوامرك ويوزعها على الفريق', stat: n('owner'), unit: 'أمر اليوم', last: last('owner') },
+      { key: 'messaging', icon: '💬', name: 'وكيل المراسلات', role: 'يرد على عملاء واتساب ويحوّل الحساس لك', stat: n('in'), unit: 'رسالة اليوم', last: last('in', 'auto'), extra: `${n('auto')} رد تلقائي · ${db.pending.length} بانتظارك` },
+      { key: 'qa', icon: '🛡️', name: 'مراجع الجودة', role: 'يفحص كل رد قبل إرساله ويمنع المعلومات المخترعة', stat: n('qa_block'), unit: 'رد أوقفه اليوم', last: last('qa_block', 'auto') },
+      { key: 'secretary', icon: '📅', name: 'السكرتير', role: 'يحجز المواعيد ويذكّرك قبلها بساعة', stat: upcoming.length, unit: 'موعد قادم', last: last('appt'), extra: upcoming[0] ? `التالي: ${fmtRiyadh(upcoming[0].at)} — ${upcoming[0].title}` : '' },
+      { key: 'exec', icon: '🛠️', name: 'وكيل التنفيذ', role: 'يجهّز عروض الأسعار والرسائل والمنشورات', stat: n('exec'), unit: 'مهمة اليوم', last: last('exec') },
+      { key: 'reports', icon: '📊', name: 'وكيل التقارير', role: `يلخص يومك ويرسله لك الساعة ${REPORT_HOUR}:00`, stat: n('report'), unit: 'تقرير اليوم', last: last('report') },
+      { key: 'learning', icon: '🎓', name: 'الذاكرة والتعلّم', role: 'يحفظ تعديلاتك ويتعلم أسلوبك في الرد', stat: db.lessons.length, unit: 'درس محفوظ', last: last('lesson') }
+    ],
+    activity: db.log.slice(-25).reverse()
+  });
 });
 app.get('/api/appointments', (_req, res) => res.json(db.appointments));
 app.post('/api/appointments', (req, res) => res.json({ message: addAppointment(req.body || {}) }));

@@ -45,6 +45,20 @@
   .hint { color:var(--muted); font-size:13px; margin:0 0 10px; line-height:1.7; }
   .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
   .chips button { font-size:12px; padding:6px 10px; }
+  .team { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; margin-bottom:14px; }
+  .agent-card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; cursor:pointer; transition:transform .15s; }
+  .agent-card:hover { transform:translateY(-2px); border-color:var(--accent); }
+  .agent-card .top { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
+  .agent-card .ic { font-size:24px; width:44px; height:44px; display:grid; place-items:center; border-radius:12px; background:var(--soft); }
+  .agent-card h3 { margin:0; font-size:15px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#22c55e; margin-inline-end:4px; box-shadow:0 0 0 3px rgba(34,197,94,.2); }
+  .dot.wait { background:#f59e0b; box-shadow:0 0 0 3px rgba(245,158,11,.2); }
+  .big { font-size:26px; font-weight:700; }
+  .banner { border-radius:12px; padding:12px 14px; margin-bottom:12px; font-size:14px; line-height:1.7; }
+  .banner.warn { background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.4); }
+  .banner.ok { background:rgba(34,197,94,.1); border:1px solid rgba(34,197,94,.35); }
+  .feed div { padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
+  .feed div:last-child { border:0; }
   @media (max-width:600px) { .stats { grid-template-columns:repeat(3,1fr); } }
 </style>
 </head>
@@ -56,8 +70,8 @@
   <section id="view"></section>
 </main>
 <script>
-const TABS = [['manager','🧠 مدير الفريق'],['pending','🟡 الموافقات'],['appts','📅 المواعيد'],['test','🧪 تجربة عميل'],['convs','💬 المحادثات'],['report','📊 التقرير'],['settings','⚙️ معلومات النشاط']];
-let state = null, current = 'manager', ownerChat = null, testChat = [];
+const TABS = [['team','👥 الفريق'],['manager','🧠 مدير الفريق'],['pending','🟡 الموافقات'],['appts','📅 المواعيد'],['test','🧪 تجربة عميل'],['convs','💬 المحادثات'],['report','📊 التقرير'],['settings','⚙️ معلومات النشاط']];
+let state = null, current = 'team', ownerChat = null, testChat = [];
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
 const time = t => t ? new Date(t).toLocaleString('ar-SA', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }) : '';
 async function api(url, body, method) {
@@ -78,7 +92,24 @@ async function tab(t) { current = t; await load(); render(); }
 
 async function render() {
   const v = document.getElementById('view');
-  if (current === 'manager') {
+  if (current === 'team') {
+    const t = await api('/api/team');
+    const wa = t.whatsapp;
+    const waBanner = !wa ? `<div class="banner warn">📱 <b>واتساب:</b> بانتظار أول رسالة. لو Meta لسه قافل الحساب، الوكلاء شغالين من هنا عادي.</div>`
+      : wa.ok ? `<div class="banner ok">📱 <b>واتساب متصل</b> — آخر إرسال ناجح ${time(wa.at)}</div>`
+      : `<div class="banner warn">📱 <b>واتساب موقوف من Meta</b> (${/131031/.test(wa.err) ? 'الحساب مقفول بانتظار التحقق' : 'خطأ في الإرسال'}). الوكلاء شغالين، وأول ما ينفك يرجع كل شي تلقائياً.</div>`;
+    const infoBanner = t.hasInfo ? '' : `<div class="banner warn">⚙️ الوكلاء ما يعرفون شي عن نشاطك للحين. عبّ <a href="#" onclick="tab('settings');return false">معلومات النشاط</a> عشان يصيرون أذكى.</div>`;
+    const go = { manager:'manager', messaging:'test', qa:'pending', secretary:'appts', exec:'manager', reports:'report', learning:'pending' };
+    v.innerHTML = waBanner + infoBanner + `<div class="team">${t.agents.map(a => `
+      <div class="agent-card" onclick="tab('${go[a.key]}')">
+        <div class="top"><div class="ic">${a.icon}</div><div><h3>${a.name}</h3><div class="meta" style="margin:0"><span class="dot ${a.key === 'messaging' && wa && !wa.ok ? 'wait' : ''}"></span>${a.key === 'messaging' && wa && !wa.ok ? 'جاهز · بانتظار واتساب' : 'شغال'}</div></div></div>
+        <div class="meta">${a.role}</div>
+        <div><span class="big">${a.stat}</span> <span class="meta">${a.unit}</span></div>
+        ${a.extra ? `<div class="meta" style="margin-top:4px">${esc(a.extra)}</div>` : ''}
+        <div class="meta" style="margin-top:6px">آخر نشاط: ${a.last ? time(a.last) : '—'}</div>
+      </div>`).join('')}</div>
+      <div class="card"><b>📜 آخر نشاط الفريق</b><div class="feed" style="margin-top:8px">${t.activity.map(l => `<div><span class="meta">${time(l.at)}</span> — ${esc(l.text)}</div>`).join('') || '<div class="meta">ما فيه نشاط للحين</div>'}</div></div>`;
+  } else if (current === 'manager') {
     if (!ownerChat) ownerChat = await api('/api/owner');
     v.innerHTML = `<div class="card">
       <p class="hint">اكتب أوامرك هنا بشكل طبيعي، والمدير يوزعها على الفريق. نفس الأوامر تشتغل من واتساب أول ما ينفك قفل Meta.</p>
@@ -157,7 +188,7 @@ async function delAppt(id) { if (!confirm('تلغي الموعد؟')) return; co
 async function report() { const el = document.getElementById('rep'); el.textContent = 'جاري الكتابة…'; el.textContent = (await api('/api/report')).report; }
 async function saveSettings() { const r = await api('/api/settings', { businessInfo: document.getElementById('bi').value }); alert(r.message); }
 load().then(render);
-setInterval(() => { if (current === 'pending' || current === 'appts') return; load(); }, 30000);
+setInterval(async () => { if (current === 'pending' || current === 'appts') return; await load(); if (current === 'team') render(); }, 30000);
 </script>
 </body>
 </html>
