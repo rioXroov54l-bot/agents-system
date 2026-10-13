@@ -3,192 +3,367 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>لوحة الوكلاء</title>
+<title>سكرتيري</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="apple-touch-icon" href="/apple-touch-icon.png">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-title" content="الوكلاء">
+<meta name="apple-mobile-web-app-title" content="سكرتيري">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f766e">
 <style>
-  :root { --bg:#f5f6f8; --card:#fff; --text:#1c1f24; --muted:#6b7280; --line:#e5e7eb; --accent:#0f766e; --warn:#b45309; --bad:#b91c1c; --soft:#eef7f6; }
-  @media (prefers-color-scheme: dark) { :root { --bg:#111317; --card:#1b1e24; --text:#eef0f3; --muted:#9aa1ab; --line:#2a2f37; --accent:#2dd4bf; --warn:#f59e0b; --bad:#f87171; --soft:#16302d; } }
-  * { box-sizing:border-box; }
-  body { margin:0; background:var(--bg); color:var(--text); font-family:-apple-system,"Segoe UI",Tahoma,sans-serif; }
-  header { padding:16px; padding-top:max(16px, env(safe-area-inset-top)); display:flex; justify-content:space-between; align-items:center; max-width:960px; margin:auto; }
-  h1 { font-size:20px; margin:0; }
-  main { padding:0 16px 40px; max-width:960px; margin:auto; }
-  .stats { display:grid; grid-template-columns:repeat(5,1fr); gap:8px; margin-bottom:14px; }
-  .stat { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; text-align:center; }
-  .stat b { display:block; font-size:22px; }
-  .stat span { color:var(--muted); font-size:12px; }
-  .tabs { display:flex; gap:6px; margin-bottom:12px; overflow-x:auto; padding-bottom:4px; }
-  .tabs button { white-space:nowrap; }
-  button { border:1px solid var(--line); background:var(--card); color:var(--text); padding:9px 12px; border-radius:10px; font-size:14px; cursor:pointer; font-family:inherit; }
-  button.on, button.primary { background:var(--accent); color:#fff; border-color:var(--accent); }
-  button.danger { color:var(--bad); }
-  .card { background:var(--card); border:1px solid var(--line); border-radius:12px; padding:14px; margin-bottom:10px; }
-  .meta { color:var(--muted); font-size:12px; margin-bottom:6px; }
-  .tag { color:var(--warn); font-weight:600; }
-  textarea, input { width:100%; border:1px solid var(--line); border-radius:8px; padding:9px; background:var(--bg); color:var(--text); font:inherit; }
-  textarea { min-height:80px; margin:8px 0; }
-  .row { display:flex; gap:8px; align-items:center; }
-  .row input { flex:1; }
-  .empty { color:var(--muted); text-align:center; padding:30px; }
-  pre { white-space:pre-wrap; font:inherit; margin:0; }
-  .chat { max-height:55vh; overflow-y:auto; display:flex; flex-direction:column; gap:6px; margin-bottom:10px; }
-  .bubble { padding:9px 12px; border-radius:12px; max-width:85%; white-space:pre-wrap; line-height:1.6; }
-  .me, .customer { background:var(--soft); align-self:flex-start; }
-  .agent { background:var(--accent); color:#fff; align-self:flex-end; }
-  .note { background:transparent; border:1px dashed var(--warn); color:var(--warn); align-self:center; font-size:13px; }
-  .hint { color:var(--muted); font-size:13px; margin:0 0 10px; line-height:1.7; }
-  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:10px; }
-  .chips button { font-size:12px; padding:6px 10px; }
-  .team { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; margin-bottom:14px; }
-  .agent-card { background:var(--card); border:1px solid var(--line); border-radius:14px; padding:14px; cursor:pointer; transition:transform .15s; }
-  .agent-card:hover { transform:translateY(-2px); border-color:var(--accent); }
-  .agent-card .top { display:flex; align-items:center; gap:10px; margin-bottom:8px; }
-  .agent-card .ic { font-size:24px; width:44px; height:44px; display:grid; place-items:center; border-radius:12px; background:var(--soft); }
-  .agent-card h3 { margin:0; font-size:15px; }
-  .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#22c55e; margin-inline-end:4px; box-shadow:0 0 0 3px rgba(34,197,94,.2); }
-  .dot.wait { background:#f59e0b; box-shadow:0 0 0 3px rgba(245,158,11,.2); }
-  .big { font-size:26px; font-weight:700; }
-  .banner { border-radius:12px; padding:12px 14px; margin-bottom:12px; font-size:14px; line-height:1.7; }
-  .banner.warn { background:rgba(245,158,11,.12); border:1px solid rgba(245,158,11,.4); }
-  .banner.ok { background:rgba(34,197,94,.1); border:1px solid rgba(34,197,94,.35); }
-  .feed div { padding:7px 0; border-bottom:1px solid var(--line); font-size:13px; }
-  .feed div:last-child { border:0; }
-  @media (max-width:600px) { .stats { grid-template-columns:repeat(3,1fr); } }
+:root{--bg:#f4f5f7;--card:#fff;--text:#1c1f24;--muted:#6b7280;--line:#e5e7eb;--accent:#0f766e;--accent2:#14b8a6;--warn:#b45309;--bad:#b91c1c;--good:#15803d;--soft:#eef7f6}
+@media (prefers-color-scheme:dark){:root{--bg:#0f1115;--card:#191c22;--text:#eef0f3;--muted:#9aa1ab;--line:#2a2f37;--accent:#2dd4bf;--accent2:#5eead4;--warn:#f59e0b;--bad:#f87171;--good:#4ade80;--soft:#132a28}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,"SF Arabic","Segoe UI",Tahoma,sans-serif;-webkit-text-size-adjust:100%}
+header{position:sticky;top:0;z-index:5;background:color-mix(in srgb,var(--bg) 88%,transparent);backdrop-filter:blur(10px);padding:12px 16px;padding-top:max(12px,env(safe-area-inset-top));border-bottom:1px solid var(--line)}
+.hrow{display:flex;justify-content:space-between;align-items:center;max-width:1100px;margin:auto;gap:10px}
+h1{font-size:19px;margin:0}
+.tabs{display:flex;gap:6px;overflow-x:auto;max-width:1100px;margin:10px auto 0;padding-bottom:2px;scrollbar-width:none}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{white-space:nowrap;font-size:13px;padding:7px 11px}
+main{padding:14px 16px 60px;max-width:1100px;margin:auto}
+button{border:1px solid var(--line);background:var(--card);color:var(--text);padding:9px 12px;border-radius:10px;font-size:14px;cursor:pointer;font-family:inherit}
+button.on,button.primary{background:var(--accent);color:#fff;border-color:var(--accent)}
+@media (prefers-color-scheme:dark){button.on,button.primary{color:#062b27}}
+button.danger{color:var(--bad)}
+button.sm{padding:5px 9px;font-size:12px;border-radius:8px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:10px}
+.grid{display:grid;gap:10px}
+.kpis{grid-template-columns:repeat(4,1fr);margin-bottom:12px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:12px}
+.kpi b{display:block;font-size:20px;margin-top:2px;font-variant-numeric:tabular-nums}
+.kpi span{color:var(--muted);font-size:12px}
+.kpi.alert b{color:var(--warn)}
+.team{grid-template-columns:repeat(auto-fill,minmax(230px,1fr))}
+.agent{display:flex;gap:10px;align-items:flex-start}
+.agent .ic{font-size:22px;width:42px;height:42px;display:grid;place-items:center;border-radius:12px;background:var(--soft);flex:none}
+.agent h3{margin:0 0 2px;font-size:14px}
+.meta{color:var(--muted);font-size:12px;line-height:1.6}
+.two{grid-template-columns:1.3fr 1fr}
+.banner{border-radius:12px;padding:12px 14px;margin-bottom:10px;font-size:14px;line-height:1.8}
+.banner.warn{background:rgba(245,158,11,.12);border:1px solid rgba(245,158,11,.4)}
+.banner.ok{background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.35)}
+code,.code{font-family:ui-monospace,Menlo,monospace;background:var(--soft);padding:2px 6px;border-radius:6px;font-size:13px;direction:ltr;unicode-bidi:embed;word-break:break-all}
+.feed div{padding:7px 0;border-bottom:1px solid var(--line);font-size:13px;line-height:1.6}
+.feed div:last-child{border:0}
+pre,.pre{white-space:pre-wrap;font:inherit;margin:0;line-height:1.75}
+.chat{min-height:45vh;max-height:62vh;overflow-y:auto;display:flex;flex-direction:column;gap:8px;margin-bottom:10px;padding:4px}
+.bubble{padding:10px 13px;border-radius:14px;max-width:88%;white-space:pre-wrap;line-height:1.75;font-size:14.5px}
+.bubble.me{background:var(--accent);color:#fff;align-self:flex-start;border-bottom-right-radius:4px}
+@media (prefers-color-scheme:dark){.bubble.me{color:#062b27}}
+.bubble.ai{background:var(--card);border:1px solid var(--line);align-self:flex-end;border-bottom-left-radius:4px}
+.bubble.wait{opacity:.6}
+.bubble a{color:inherit}
+.compose{display:flex;gap:8px;align-items:flex-end}
+textarea,input,select{width:100%;border:1px solid var(--line);border-radius:10px;padding:10px;background:var(--bg);color:var(--text);font:inherit;font-size:16px}
+textarea{min-height:46px;resize:vertical}
+.chips{display:flex;flex-wrap:wrap;gap:6px;margin-bottom:10px}
+.chips button{font-size:12.5px;padding:6px 10px;border-radius:999px}
+.toolbar{display:flex;gap:8px;align-items:center;margin-bottom:10px;flex-wrap:wrap}
+.toolbar input{flex:1;min-width:150px}
+.row{display:flex;justify-content:space-between;gap:10px;align-items:flex-start}
+.row .t{font-weight:600;font-size:14.5px;margin-bottom:3px}
+.acts{display:flex;gap:6px;flex:none}
+.pill{display:inline-block;font-size:11.5px;padding:2px 8px;border-radius:999px;background:var(--soft);color:var(--accent);margin-inline-start:4px}
+.pill.warn{background:rgba(245,158,11,.15);color:var(--warn)}
+.pill.bad{background:rgba(239,68,68,.12);color:var(--bad)}
+.empty{color:var(--muted);text-align:center;padding:30px 10px}
+.bar{height:8px;background:var(--line);border-radius:99px;overflow:hidden;margin-top:6px}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:99px}
+.bar.over i{background:var(--bad)}
+dialog{border:0;border-radius:16px;padding:0;width:min(560px,94vw);background:var(--card);color:var(--text);box-shadow:0 20px 60px rgba(0,0,0,.35)}
+dialog::backdrop{background:rgba(0,0,0,.45)}
+dialog form{padding:18px}
+dialog h3{margin:0 0 12px}
+.field{margin-bottom:10px}
+.field label{display:block;font-size:12.5px;color:var(--muted);margin-bottom:4px}
+.field.chk{display:flex;gap:8px;align-items:center}.field.chk input{width:auto}
+.dlg-acts{display:flex;gap:8px;justify-content:flex-start;margin-top:14px}
+h2{font-size:16px;margin:4px 0 10px}
+.small{font-size:12.5px;color:var(--muted)}
+@media (max-width:760px){.kpis{grid-template-columns:repeat(2,1fr)}.two{grid-template-columns:1fr}.kpi b{font-size:18px}}
 </style>
 </head>
 <body>
-<header><h1>لوحة الوكلاء</h1><button onclick="load().then(render)">تحديث</button></header>
-<main>
-  <div class="stats" id="stats"></div>
-  <div class="tabs" id="tabs"></div>
-  <section id="view"></section>
-</main>
+<header>
+  <div class="hrow"><h1>🧠 سكرتيري</h1><button class="sm" onclick="go(cur)">تحديث</button></div>
+  <nav class="tabs" id="tabs"></nav>
+</header>
+<main id="view"></main>
+<dialog id="dlg"><form method="dialog" id="dlgForm"></form></dialog>
+
 <script>
-const TABS = [['team','👥 الفريق'],['manager','🧠 مدير الفريق'],['pending','🟡 الموافقات'],['appts','📅 المواعيد'],['test','🧪 تجربة عميل'],['convs','💬 المحادثات'],['report','📊 التقرير'],['settings','⚙️ معلومات النشاط']];
-let state = null, current = 'team', ownerChat = null, testChat = [];
+const TABS = [
+  ['home','🏠 الرئيسية'],['chat','💬 كلّم سكرتيرك'],['approvals','🟡 الموافقات'],['appointments','📅 المواعيد'],['reminders','⏰ التذكيرات'],
+  ['tasks','✅ المهام'],['money','💰 فلوسي'],['bills','🧾 الفواتير'],['documents','🪪 الوثائق'],['occasions','🎂 المناسبات'],
+  ['shopping','🛒 المقاضي'],['goals','🎯 الأهداف'],['trips','✈️ السفر'],['contacts','👥 جهات الاتصال'],['notes','📝 الملاحظات'],
+  ['emails','📧 الإيميل'],['research','🔎 الأبحاث'],['members','🧑‍🔧 الأشخاص'],['runs','📜 سجل الفريق'],['settings','⚙️ الإعدادات']
+];
+let cur = location.hash.slice(1) || 'home';
+const $ = s => document.querySelector(s);
 const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
-const time = t => t ? new Date(t).toLocaleString('ar-SA', { hour:'2-digit', minute:'2-digit', day:'numeric', month:'short' }) : '';
+const fmtMoney = n => Number(n || 0).toLocaleString('en-US', { maximumFractionDigits: 2 });
+const fmtDT = t => t ? new Date(t).toLocaleString('ar-SA-u-nu-latn-ca-gregory', { timeZone:'Asia/Riyadh', weekday:'short', day:'numeric', month:'short', hour:'2-digit', minute:'2-digit' }) : '';
+const fmtD = t => t ? String(t).slice(0, 10) : '';
+const toLocalInput = t => t ? new Date(new Date(t).getTime() + 3*3600e3).toISOString().slice(0, 16) : '';
+const rich = s => esc(s).replace(/\*\*(.+?)\*\*/g, '<b>$1</b>').replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener">$1</a>');
+const daysLeft = d => d ? Math.round((new Date(String(d).slice(0,10) + 'T00:00:00+03:00') - new Date(new Date(Date.now()+3*3600e3).toISOString().slice(0,10) + 'T00:00:00+03:00')) / 864e5) : null;
 async function api(url, body, method) {
-  const opts = (body !== undefined || method) ? { method: method || 'POST', headers: {'Content-Type':'application/json'}, body: body !== undefined ? JSON.stringify(body) : undefined } : {};
-  return (await fetch(url, opts)).json();
+  const opts = (body !== undefined || method) ? { method: method || 'POST', headers: { 'Content-Type': 'application/json' }, body: body !== undefined ? JSON.stringify(body) : undefined } : {};
+  const r = await fetch(url, opts);
+  const d = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(d.error || ('خطأ ' + r.status));
+  return d;
+}
+function toast(msg) { alert(msg); }
+
+// ============ تعريف الأقسام القابلة للإضافة والتعديل ============
+const CAT = ['تموينات','خضار وفواكه','لحوم','منظفات','صيدلية','إلكترونيات','ملابس','أخرى'];
+const E = {
+  appointments: { title: 'موعد', fields: [['title','العنوان'],['at','الوقت','dt'],['location','المكان/الرابط'],['notes','ملاحظات','area']],
+    row: r => [`${esc(r.title)}`, `${fmtDT(r.at)}${r.location ? ' · 📍' + esc(r.location) : ''}${r.gcal_id ? '<span class="pill">Google</span>' : ''}`] },
+  reminders: { title: 'تذكير', fields: [['text','التذكير'],['at','الوقت','dt'],['repeat','التكرار','select',[['none','بدون'],['daily','يومي'],['weekdays','أيام العمل'],['weekly','أسبوعي'],['monthly','شهري'],['yearly','سنوي']]],['done','منتهي','bool']],
+    row: r => [esc(r.text), `${fmtDT(r.at)}${r.repeat && r.repeat !== 'none' ? '<span class="pill">🔁 ' + esc(r.repeat) + '</span>' : ''}${r.done ? '<span class="pill">منتهي</span>' : ''}`] },
+  tasks: { title: 'مهمة', fields: [['title','المهمة'],['details','التفاصيل','area'],['due_at','الموعد','dt'],['priority','الأولوية','select',[['normal','عادية'],['high','مهمة'],['urgent','عاجلة'],['low','منخفضة']]],['status','الحالة','select',[['todo','جديدة'],['doing','قيد التنفيذ'],['blocked','معلقة'],['done','منجزة']]],['assignee_id','إسناد لـ','ref:members']],
+    row: r => [`${{urgent:'🔴',high:'🟠',normal:'🔵',low:'⚪'}[r.priority]||''} ${esc(r.title)}`, `${r.due_at ? fmtDT(r.due_at) : 'بدون موعد'}${r.assignee ? ' · ← ' + esc(r.assignee) : ''}<span class="pill ${r.status==='done'?'':r.due_at && new Date(r.due_at) < new Date() ? 'bad' : ''}">${{todo:'جديدة',doing:'قيد التنفيذ',blocked:'معلقة',done:'منجزة ✓'}[r.status]}</span>`],
+    quick: r => r.status !== 'done' ? `<button class="sm" onclick="patch('tasks',${r.id},{status:'done'})">✓ خلصت</button>` : '' },
+  expenses: { title: 'مصروف', fields: [['amount','المبلغ','num'],['category','التصنيف'],['vendor','الجهة/المتجر'],['date','التاريخ','date'],['note','ملاحظة']],
+    row: r => [`${fmtMoney(r.amount)} ر.س — ${esc(r.category || '')}`, `${fmtD(r.date)} · ${esc(r.vendor || '')}${r.note ? ' · ' + esc(r.note) : ''}`] },
+  income: { title: 'دخل', fields: [['amount','المبلغ','num'],['source','المصدر'],['date','التاريخ','date'],['note','ملاحظة']],
+    row: r => [`+${fmtMoney(r.amount)} ر.س — ${esc(r.source || '')}`, `${fmtD(r.date)}${r.note ? ' · ' + esc(r.note) : ''}`] },
+  bills: { title: 'فاتورة/اشتراك', fields: [['name','الاسم'],['amount','المبلغ','num'],['cycle','الدورة','select',[['monthly','شهري'],['yearly','سنوي'],['quarterly','ربعي'],['weekly','أسبوعي'],['once','مرة واحدة']]],['next_due','الاستحقاق القادم','date'],['category','التصنيف'],['autopay','يُخصم تلقائياً','bool'],['active','فعّال','bool'],['notes','ملاحظات','area']],
+    row: r => { const d = daysLeft(r.next_due); return [`${esc(r.name)} — ${fmtMoney(r.amount)} ر.س`, `${{monthly:'شهري',yearly:'سنوي',quarterly:'ربعي',weekly:'أسبوعي',once:'مرة'}[r.cycle]||r.cycle}${r.next_due ? ' · ' + fmtD(r.next_due) : ''}${d !== null ? `<span class="pill ${d<0?'bad':d<=3?'warn':''}">${d<0?'متأخرة':d===0?'اليوم':'بعد '+d+' يوم'}</span>` : ''}${r.autopay ? '<span class="pill">تلقائي</span>' : ''}${!r.active ? '<span class="pill">موقوف</span>' : ''}`]; },
+    quick: r => r.active ? `<button class="sm" onclick="payBill(${r.id})">✓ سددت</button>` : '' },
+  documents: { title: 'وثيقة', fields: [['name','الوثيقة (جواز، إقامة، رخصة...)'],['holder','صاحبها'],['expires_on','تاريخ الانتهاء (ميلادي)','date'],['notes','ملاحظات: طريقة التجديد','area']],
+    note: 'لا تكتب أرقام الهوية أو الجواز هنا — يكفي الاسم وتاريخ الانتهاء.',
+    row: r => { const d = daysLeft(r.expires_on); return [`🪪 ${esc(r.name)}${r.holder ? ' (' + esc(r.holder) + ')' : ''}`, `${fmtD(r.expires_on)}${d !== null ? `<span class="pill ${d<0?'bad':d<=30?'warn':''}">${d<0?'منتهية':'باقي '+d+' يوم'}</span>` : ''}${r.notes ? ' · ' + esc(r.notes) : ''}`]; } },
+  occasions: { title: 'مناسبة', fields: [['person','الشخص'],['type','النوع','select',[['birthday','عيد ميلاد'],['anniversary','ذكرى'],['other','أخرى']]],['month','الشهر (1-12)','num'],['day','اليوم','num'],['year','سنة الميلاد (اختياري)','num'],['notes','اهتماماته / أفكار هدايا','area']],
+    row: r => [`🎂 ${esc(r.person)}`, `${r.day}/${r.month}${r.year ? ' · مواليد ' + r.year : ''} · ${{birthday:'عيد ميلاد',anniversary:'ذكرى',other:'مناسبة'}[r.type]||''}${r.notes ? ' · ' + esc(r.notes) : ''}`] },
+  shopping: { title: 'غرض', fields: [['item','الغرض'],['qty','الكمية'],['category','القسم','select',CAT.map(c=>[c,c])],['store','المتجر'],['done','تم شراؤه','bool']],
+    row: r => [`${r.done ? '✅ <s>' + esc(r.item) + '</s>' : '▫️ ' + esc(r.item)}${r.qty ? ' × ' + esc(r.qty) : ''}`, `${esc(r.category || '')}${r.store ? ' · ' + esc(r.store) : ''}`],
+    quick: r => `<button class="sm" onclick="patch('shopping',${r.id},{done:${!r.done}})">${r.done ? '↩︎' : '✓'}</button>` },
+  goals: { title: 'هدف', fields: [['title','الهدف'],['why','ليش؟','area'],['target','الرقم المستهدف','num'],['unit','الوحدة'],['period','الفترة','select',[['daily','يومي'],['weekly','أسبوعي'],['monthly','شهري'],['once','مرة واحدة']]],['deadline','الموعد النهائي','date'],['status','الحالة','select',[['active','نشط'],['paused','موقوف'],['done','تحقق']]]],
+    row: r => [`🎯 ${esc(r.title)}`, `${r.target ? 'الهدف: ' + r.target + ' ' + esc(r.unit || '') + ' ' + ({daily:'يومياً',weekly:'أسبوعياً',monthly:'شهرياً',once:''}[r.period]||'') : ''} · المسجل: ${Number(r.total_logged||0)}${r.status!=='active'?'<span class="pill">'+esc(r.status)+'</span>':''}`] },
+  trips: { title: 'رحلة', fields: [['title','العنوان'],['origin','من'],['destination','إلى'],['status','الحالة','select',[['planning','تخطيط'],['options_ready','خيارات جاهزة'],['booked','محجوزة'],['done','انتهت'],['cancelled','ملغاة']]],['notes','ملاحظات','area']],
+    row: r => [`✈️ ${esc(r.title)}${r.destination ? ' — ' + esc(r.destination) : ''}`, `${r.depart_at ? fmtD(r.depart_at) : ''}${r.return_at ? ' ← ' + fmtD(r.return_at) : ''}<span class="pill">${esc(r.status)}</span>${(r.options||[]).length ? '<div class="pre small" style="margin-top:6px">' + r.options.map(o => `• ${esc(o.provider||o.type)}: ${esc(o.details)}${o.price ? ' — ' + fmtMoney(o.price) + ' ' + esc(o.currency||'') : ''}${o.link ? ' ' + rich(o.link) : ''}`).join('\n') + '</div>' : ''}`] },
+  contacts: { title: 'جهة اتصال', fields: [['name','الاسم'],['relation','العلاقة','select',[['عائلة','عائلة'],['صديق','صديق'],['عمل','عمل'],['خدمات','خدمات وفنيين'],['أخرى','أخرى']]],['phone','الجوال'],['email','الإيميل'],['company','الجهة/المهنة'],['city','المدينة'],['notes','ملاحظات','area']],
+    row: r => [`👤 ${esc(r.name)}${r.relation ? '<span class="pill">' + esc(r.relation) + '</span>' : ''}`, `${r.phone ? `<a href="tel:${esc(r.phone)}">${esc(r.phone)}</a>` : ''}${r.email ? ' · ' + esc(r.email) : ''}${r.company ? ' · ' + esc(r.company) : ''}${r.notes ? '<br>' + esc(r.notes) : ''}`] },
+  notes: { title: 'ملاحظة', fields: [['title','العنوان'],['body','النص','area']], note: 'لا تحفظ كلمات سر أو أرقام بطاقات.',
+    row: r => [`📝 ${esc(r.title || 'بدون عنوان')}`, `<div class="pre">${esc(String(r.body).slice(0, 400))}</div>`] },
+  research: { title: 'بحث', fields: [['topic','الموضوع'],['summary','الخلاصة','area']], noAdd: true,
+    row: r => [`🔎 ${esc(r.topic)}`, `<div class="pre">${rich(String(r.summary || '').slice(0, 1200))}</div>`] },
+  members: { title: 'شخص', fields: [['name','الاسم'],['role','الدور (سائق، عامل، أخ...)'],['phone','الجوال'],['email','الإيميل'],['active','فعّال','bool']],
+    note: 'الأشخاص اللي تسند لهم مهام (سائق، عاملة، أحد أفراد العائلة). كل واحد يربط تيليجرام بكود ويستلم مهامه.',
+    row: r => [`🧑 ${esc(r.name)}${r.role ? ' — ' + esc(r.role) : ''}`, `${r.on_telegram ? '<span class="pill">مربوط بتيليجرام ✓</span>' : r.link_code ? `كود الربط: يرسل للبوت <code>/start ${esc(r.link_code)}</code>` : ''}${r.phone ? ' · ' + esc(r.phone) : ''}`] },
+  emails: { title: 'إيميل', fields: [['handled','تمت معالجته','bool']], noAdd: true,
+    row: r => [`${r.important ? '⭐ ' : ''}${esc(r.subject)}`, `${esc(r.from_addr)} · ${fmtDT(r.at)}<span class="pill">${esc(r.category || '')}</span>${r.handled ? '<span class="pill">تم</span>' : ''}${r.summary ? '<br>' + esc(r.summary) : ''}`] },
+  runs: { title: 'تشغيل', fields: [], noAdd: true, noEdit: true,
+    row: r => [`${{manager:'🧠',secretary:'📅',travel:'✈️',money:'💰',shopping:'🛒',writer:'✍️',planner:'🎯',research:'🔎',reception:'💬'}[r.agent]||'🤖'} ${esc(r.agent)} — ${esc(String(r.input||'').slice(0, 120))}`,
+      `${fmtDT(r.started_at)} · ${(r.steps||[]).length} خطوة · ${r.status === 'error' ? '<span class="pill bad">خطأ</span>' : '<span class="pill">تم</span>'}<details><summary class="small">التفاصيل</summary><div class="pre small">${(r.steps||[]).map(s => `${s.ok === false ? '❌' : '✔︎'} ${esc(s.tool)} ${esc(JSON.stringify(s.input||{}).slice(0, 160))}`).join('\n')}\n\n${rich(r.output || '')}</div></details>`] }
+};
+
+// ============ التنقل ============
+function renderTabs() {
+  $('#tabs').innerHTML = TABS.map(([k, l]) => `<button class="${k === cur ? 'on' : ''}" onclick="go('${k}')">${l}</button>`).join('');
+  const on = $('#tabs .on'); if (on) on.scrollIntoView({ inline: 'center', block: 'nearest' });
+}
+async function go(k) {
+  cur = k; location.hash = k; renderTabs();
+  const v = $('#view'); v.innerHTML = '<div class="empty">⏳</div>';
+  try {
+    if (k === 'home') return await home(v);
+    if (k === 'chat') return await chat(v);
+    if (k === 'approvals') return await approvals(v);
+    if (k === 'money') return await money(v);
+    if (k === 'settings') return await settings(v);
+    if (E[k]) return await list(v, k);
+  } catch (e) { v.innerHTML = `<div class="banner warn">⚠️ ${esc(e.message)}</div>`; }
 }
 
-async function load() {
-  state = await api('/api/state');
-  state.appts = await api('/api/appointments');
-  const s = state.stats, upcoming = state.appts.filter(a => new Date(a.at) > Date.now()).length;
-  document.getElementById('stats').innerHTML = [
-    ['رسائل اليوم', s.incoming], ['ردود تلقائية', s.auto], ['موافقات', s.approved], ['معلّق', s.pending], ['مواعيد قادمة', upcoming]
-  ].map(([l, v]) => `<div class="stat"><b>${v}</b><span>${l}</span></div>`).join('');
-  document.getElementById('tabs').innerHTML = TABS.map(([k, l]) => `<button class="${k === current ? 'on' : ''}" onclick="tab('${k}')">${l}</button>`).join('');
+// ============ الرئيسية ============
+async function home(v) {
+  const [o, brief] = await Promise.all([api('/api/overview'), api('/api/quick/today')]);
+  const k = o.kpi, st = o.status;
+  let banners = '';
+  if (!st.telegram.enabled) banners += `<div class="banner warn">📱 <b>اربط تيليجرام:</b> أضف <code>TELEGRAM_BOT_TOKEN</code> في متغيرات Railway لخدمة agents-system.</div>`;
+  else if (!st.telegram.linked) banners += `<div class="banner warn">📱 <b>خطوة أخيرة:</b> افتح بوتك في تيليجرام وأرسل له: <code>/start ${esc(st.telegram.pair_code)}</code></div>`;
+  else banners += `<div class="banner ok">📱 تيليجرام مربوط — كلم سكرتيرك من هناك بأي وقت.</div>`;
+  if (!st.profile_set) banners += `<div class="banner warn">👤 عرّف سكرتيرك عليك (اسمك، عائلتك، تفضيلاتك) من <a href="#settings" onclick="go('settings')">الإعدادات</a> عشان يخدمك أحسن.</div>`;
+  const K = (label, val, alert) => `<div class="kpi ${alert ? 'alert' : ''}"><span>${label}</span><b>${val}</b></div>`;
+  v.innerHTML = banners + `
+  <div class="grid kpis">
+    ${K('صرفت هالشهر', fmtMoney(k.spent))}${K('الدخل', fmtMoney(k.income))}${K('الصافي', fmtMoney(k.net))}${K('التزامات شهرية', fmtMoney(k.commitments))}
+    ${K('مواعيد اليوم', k.appointments_today)}${K('مهام مفتوحة', k.open_tasks + (k.overdue_tasks ? ` <small style="color:var(--bad)">(${k.overdue_tasks} متأخرة)</small>` : ''), k.overdue_tasks)}
+    ${K('فواتير خلال أسبوع', k.bills_soon, k.bills_soon)}${K('وثائق تنتهي قريباً', k.docs_expiring, k.docs_expiring)}
+  </div>
+  <div class="grid two">
+    <div class="card"><div class="pre">${rich(brief.text)}</div></div>
+    <div>
+      <div class="card"><h2>فريقك</h2><div class="grid" style="gap:12px">${o.team.map(a => `<div class="agent"><div class="ic">${a.icon}</div><div><h3>${esc(a.name)}</h3><div class="meta">${esc(a.role)}</div><div class="meta">${a.runs_today ? '● ' + a.runs_today + ' مهمة اليوم' : a.last ? 'آخر شغل: ' + fmtDT(a.last) : 'جاهز'}</div></div></div>`).join('')}</div></div>
+      <div class="card"><h2>آخر النشاط</h2><div class="feed">${o.activity.map(a => `<div>${esc(a.text)}<div class="meta">${fmtDT(a.at)}</div></div>`).join('') || '<div class="meta">ما فيه نشاط للحين</div>'}</div></div>
+    </div>
+  </div>`;
 }
-async function tab(t) { current = t; await load(); render(); }
 
-async function render() {
-  const v = document.getElementById('view');
-  if (current === 'team') {
-    const t = await api('/api/team');
-    const wa = t.whatsapp;
-    const waBanner = !wa ? `<div class="banner warn">📱 <b>واتساب:</b> بانتظار أول رسالة. لو Meta لسه قافل الحساب، الوكلاء شغالين من هنا عادي.</div>`
-      : wa.ok ? `<div class="banner ok">📱 <b>واتساب متصل</b> — آخر إرسال ناجح ${time(wa.at)}</div>`
-      : `<div class="banner warn">📱 <b>واتساب موقوف من Meta</b> (${/131031/.test(wa.err) ? 'الحساب مقفول بانتظار التحقق' : 'خطأ في الإرسال'}). الوكلاء شغالين، وأول ما ينفك يرجع كل شي تلقائياً.</div>`;
-    const infoBanner = t.hasInfo ? '' : `<div class="banner warn">⚙️ الوكلاء ما يعرفون شي عن نشاطك للحين. عبّ <a href="#" onclick="tab('settings');return false">معلومات النشاط</a> عشان يصيرون أذكى.</div>`;
-    const go = { manager:'manager', messaging:'test', qa:'pending', secretary:'appts', exec:'manager', reports:'report', learning:'pending', integrations:'manager' };
-    v.innerHTML = waBanner + infoBanner + `<div class="team">${t.agents.map(a => `
-      <div class="agent-card" onclick="tab('${go[a.key]}')">
-        <div class="top"><div class="ic">${a.icon}</div><div><h3>${a.name}</h3><div class="meta" style="margin:0"><span class="dot ${a.key === 'messaging' && wa && !wa.ok ? 'wait' : ''}"></span>${a.key === 'messaging' && wa && !wa.ok ? 'جاهز · بانتظار واتساب' : 'شغال'}</div></div></div>
-        <div class="meta">${a.role}</div>
-        <div><span class="big">${a.stat}</span> <span class="meta">${a.unit}</span></div>
-        ${a.extra ? `<div class="meta" style="margin-top:4px">${esc(a.extra)}</div>` : ''}
-        <div class="meta" style="margin-top:6px">آخر نشاط: ${a.last ? time(a.last) : '—'}</div>
-      </div>`).join('')}</div>
-      <div class="card"><b>📜 آخر نشاط الفريق</b><div class="feed" style="margin-top:8px">${t.activity.map(l => `<div><span class="meta">${time(l.at)}</span> — ${esc(l.text)}</div>`).join('') || '<div class="meta">ما فيه نشاط للحين</div>'}</div></div>`;
-  } else if (current === 'manager') {
-    if (!ownerChat) ownerChat = await api('/api/owner');
-    v.innerHTML = `<div class="card">
-      <p class="hint">اكتب أوامرك هنا بشكل طبيعي، والمدير يوزعها على الفريق. نفس الأوامر تشتغل من واتساب أول ما ينفك قفل Meta.</p>
-      <div class="chips">${['احجز موعد مع أبو خالد بكرة الساعة 4 العصر','المواعيد','جهز عرض سعر لـ 50 قطعة','اكتب رسالة ترحيب للعملاء الجدد','تقرير'].map(x => `<button onclick="send('${x}')">${x}</button>`).join('')}</div>
-      <div class="chat" id="chat">${ownerChat.map(m => `<div class="bubble ${m.role === 'owner' ? 'me' : 'agent'}">${esc(m.text)}</div>`).join('') || '<div class="empty">ابدأ بأمر…</div>'}</div>
-      <div class="row"><input id="msg" placeholder="مثال: ذكرني أتصل بالمورد الخميس الساعة 10 الصبح" onkeydown="if(event.key==='Enter')send()"><button class="primary" onclick="send()">إرسال</button></div></div>`;
-    scrollChat();
-  } else if (current === 'pending') {
-    v.innerHTML = state.pending.length ? state.pending.map(p => `
-      <div class="card">
-        <div class="meta"><span class="tag">#${p.id} · ${esc(p.category)}</span> — ${esc(p.name)} · ${time(p.at)}</div>
-        <div><b>رسالته:</b> ${esc(p.customerText)}</div>
-        ${p.reason ? `<div class="meta" style="margin-top:6px">السبب: ${esc(p.reason)}</div>` : ''}
-        <textarea id="d${p.id}">${esc(p.draft)}</textarea>
-        <div class="row"><button class="primary" onclick="approve(${p.id})">إرسال الرد</button><button class="danger" onclick="reject(${p.id})">رفض</button></div>
-      </div>`).join('') : '<div class="empty">ما فيه طلبات تنتظرك 👍</div>';
-  } else if (current === 'appts') {
-    v.innerHTML = `<div class="card"><p class="hint">تقدر تضيف موعد من هنا، أو تكتبه للمدير بكلامك. يوصلك تذكير على واتساب قبل الموعد بساعة.</p>
-      <div class="row" style="flex-wrap:wrap"><input id="at" type="datetime-local" style="flex:0 0 220px"><input id="tt" placeholder="عنوان الموعد"><button class="primary" onclick="addAppt()">إضافة</button></div></div>
-      ${state.appts.length ? state.appts.map(a => `<div class="card row" style="justify-content:space-between">
-        <div><b>${esc(a.title)}</b><div class="meta">#${a.id} · ${time(a.at)} ${a.customer ? '· ' + esc(a.customer) : ''} ${new Date(a.at) < Date.now() ? '· انتهى' : ''}</div></div>
-        <button class="danger" onclick="delAppt(${a.id})">إلغاء</button></div>`).join('') : '<div class="empty">ما فيه مواعيد</div>'}`;
-  } else if (current === 'test') {
-    v.innerHTML = `<div class="card">
-      <p class="hint">جرّب وكيل المراسلات كأنك عميل، بدون واتساب. الأسئلة العامة يرد عليها لحاله، والأسعار والمواعيد والشكاوى تروح لتبويب <b>الموافقات</b>.</p>
-      <div class="chips">${['السلام عليكم','وش تسوون؟','كم سعر القطعة؟','أبي أحجز موعد زيارة','عندي شكوى على الطلب'].map(x => `<button onclick="sim('${x}')">${x}</button>`).join('')}</div>
-      <div class="chat" id="chat">${testChat.map(m => `<div class="bubble ${m.r}">${esc(m.t)}</div>`).join('') || '<div class="empty">اكتب رسالة كأنك عميل…</div>'}</div>
-      <div class="row"><input id="msg" placeholder="اكتب رسالة العميل" onkeydown="if(event.key==='Enter')sim()"><button class="primary" onclick="sim()">إرسال</button></div></div>`;
-    scrollChat();
-  } else if (current === 'convs') {
-    const real = state.conversations.filter(c => !c.phone.startsWith('test'));
-    v.innerHTML = real.length ? real.map(c => `
-      <div class="card" onclick="openConv('${c.phone}')" style="cursor:pointer">
-        <div class="meta">${esc(c.name)} · ${time(c.last?.at)}</div><div>${esc(c.last?.text).slice(0, 120)}</div>
-      </div>`).join('') : '<div class="empty">ما فيه محادثات واتساب للحين</div>';
-  } else if (current === 'report') {
-    v.innerHTML = '<div class="card"><button class="primary" onclick="report()">اكتب تقرير اليوم</button><pre id="rep" style="margin-top:12px"></pre></div>';
-  } else if (current === 'settings') {
-    const s = await api('/api/settings');
-    v.innerHTML = `<div class="card"><p class="hint">هذي المعلومات هي <b>المصدر الوحيد</b> اللي يعتمد عليه وكيل المراسلات ووكيل التنفيذ. اكتب: وش تبيعون، المنتجات، أوقات الدوام، الموقع، أرقام التواصل، طريقة الطلب والتوصيل. أي شي مو مكتوب هنا، الوكيل يحوّله لك للموافقة بدل ما يخترع.</p>
-      <textarea id="bi" style="min-height:300px">${esc(s.businessInfo)}</textarea>
-      <button class="primary" onclick="saveSettings()">حفظ</button></div>`;
-  }
+// ============ المحادثة ============
+const CHIPS = ['وش عندي اليوم؟', 'ذكرني بكرة 9 الصبح أتصل بالبنك', 'كم صرفت هالشهر وعلى وش؟', 'ضيف للمقاضي: حليب، خبز، بيض', 'أبي رحلة لجدة الخميس الجاي وأرجع السبت', 'قارن لي أسعار سماعات AirPods Pro', 'وش آخر إيميلاتي المهمة؟', 'اكتب لي رسالة تهنئة بالعيد للأهل'];
+let pendingFile = null;
+async function chat(v) {
+  const hist = await api('/api/owner');
+  v.innerHTML = `<div class="card"><div class="chat" id="chatbox">${hist.map(m => `<div class="bubble ${m.role === 'owner' ? 'me' : 'ai'}">${rich(m.text)}</div>`).join('') || '<div class="empty">قل لي أي شي تبيه... صغير أو كبير 👇</div>'}</div>
+    <div class="chips">${CHIPS.map(c => `<button onclick="$('#msg').value=this.textContent;$('#msg').focus()">${esc(c)}</button>`).join('')}</div>
+    <div class="compose"><label class="sm" style="cursor:pointer;padding:10px;border:1px solid var(--line);border-radius:10px" title="أرفق صورة أو PDF">📎<input type="file" accept="image/*,application/pdf" hidden onchange="pickFile(this)"></label>
+    <textarea id="msg" rows="1" placeholder="اكتب طلبك..." onkeydown="if(event.key==='Enter'&&!event.shiftKey&&!event.isComposing){event.preventDefault();send()}"></textarea>
+    <button class="primary" onclick="send()">إرسال</button></div><div class="small" id="filelabel"></div></div>`;
+  const box = $('#chatbox'); box.scrollTop = box.scrollHeight;
 }
-function scrollChat() { const c = document.getElementById('chat'); if (c) c.scrollTop = c.scrollHeight; const m = document.getElementById('msg'); if (m) m.focus(); }
-async function send(x) {
-  const el = document.getElementById('msg'), text = (x || el.value).trim(); if (!text) return;
-  ownerChat.push({ role:'owner', text }, { role:'agent', text:'…' }); render();
-  const r = await api('/api/owner', { text });
-  ownerChat[ownerChat.length - 1].text = r.reply; await load(); render();
+function pickFile(inp) {
+  const f = inp.files[0]; if (!f) return;
+  if (f.size > 15e6) return toast('الملف كبير (الحد 15MB)');
+  const r = new FileReader();
+  r.onload = () => { pendingFile = { type: f.type, data: String(r.result).split(',')[1], name: f.name }; $('#filelabel').textContent = '📎 ' + f.name; };
+  r.readAsDataURL(f);
 }
-async function sim(x) {
-  const el = document.getElementById('msg'), text = (x || el.value).trim(); if (!text) return;
-  testChat.push({ r:'customer', t:text }, { r:'agent', t:'…' }); render();
-  const r = await api('/api/simulate', { text, session:'dash' });
-  testChat.pop();
-  if (r.error) testChat.push({ r:'note', t:'خطأ: ' + r.error });
-  else if (r.pending) testChat.push({ r:'note', t:`🟡 هذي تحتاج موافقتك (${r.category}) — انرسلت لتبويب الموافقات #${r.id}\nالمسودة: ${r.draft || '—'}` });
-  else testChat.push({ r:'agent', t:r.reply || '—' });
-  await load(); render();
+async function send() {
+  const t = $('#msg').value.trim(); if (!t && !pendingFile) return;
+  const box = $('#chatbox'); if (box.querySelector('.empty')) box.innerHTML = '';
+  box.insertAdjacentHTML('beforeend', `<div class="bubble me">${rich(t || '')}${pendingFile ? '<br>📎 ' + esc(pendingFile.name) : ''}</div><div class="bubble ai wait" id="w">⏳ الفريق يشتغل...</div>`);
+  box.scrollTop = box.scrollHeight; $('#msg').value = '';
+  const file = pendingFile; pendingFile = null; $('#filelabel').textContent = '';
+  try { const r = await api('/api/owner', { text: t, file }); $('#w').outerHTML = `<div class="bubble ai">${rich(r.reply)}</div>`; }
+  catch (e) { $('#w').outerHTML = `<div class="bubble ai">⚠️ ${esc(e.message)}</div>`; }
+  box.scrollTop = box.scrollHeight;
 }
-async function openConv(phone) {
-  const c = await api('/api/conversation/' + phone);
-  document.getElementById('view').innerHTML = `<button onclick="render()">رجوع</button>
-    <div class="card" style="margin-top:10px"><div class="meta">${esc(c.name)}</div><div class="chat">
-    ${c.messages.map(m => `<div class="bubble ${m.role}">${esc(m.text)}</div>`).join('')}</div></div>`;
+
+// ============ الموافقات ============
+async function approvals(v) {
+  const list = await api('/api/approvals');
+  v.innerHTML = list.length ? list.map(a => `<div class="card"><div class="meta">#${a.id} · ${fmtDT(a.created_at)}</div><div class="pre">${esc(a.summary)}</div>
+    <textarea id="ed${a.id}" placeholder="(اختياري) عدّل النص قبل الموافقة"></textarea>
+    <div class="acts" style="margin-top:8px"><button class="primary" onclick="decideAp(${a.id},true)">✅ موافق</button><button class="danger" onclick="decideAp(${a.id},false)">❌ رفض</button></div></div>`).join('')
+    : '<div class="empty">ما فيه شي ينتظر موافقتك ✅</div>';
 }
-async function approve(id) { const r = await api('/api/approve/' + id, { text: document.getElementById('d' + id).value }); alert(r.message); await load(); render(); }
-async function reject(id) { if (!confirm('ترفض هذا الطلب؟')) return; const r = await api('/api/reject/' + id, {}); alert(r.message); await load(); render(); }
-async function addAppt() {
-  const at = document.getElementById('at').value, title = document.getElementById('tt').value.trim();
-  if (!at || !title) return alert('حدد الوقت والعنوان');
-  const r = await api('/api/appointments', { datetime: at, title }); alert(r.message); await load(); render();
+async function decideAp(id, ok) { const r = await api('/api/approvals/' + id, { approve: ok, text: ($('#ed' + id).value || '').trim() || undefined }); toast(r.message); go('approvals'); }
+
+// ============ قوائم عامة ============
+async function list(v, ent, q) {
+  const def = E[ent];
+  const rows = await api(`/api/e/${ent}${q ? '?q=' + encodeURIComponent(q) : ''}`);
+  v.innerHTML = `<div class="toolbar"><input id="q" placeholder="بحث..." value="${esc(q || '')}" onkeydown="if(event.key==='Enter')list($('#view'),'${ent}',this.value)">
+    ${def.noAdd ? '' : `<button class="primary" onclick="edit('${ent}')">+ ${def.title}</button>`}
+    ${ent === 'shopping' ? `<button onclick="clearShopping()">🧹 امسح المشترى</button>` : ''}</div>
+    ${def.note ? `<div class="small" style="margin-bottom:8px">${esc(def.note)}</div>` : ''}
+    ${rows.length ? rows.map(r => { const [t, m] = def.row(r); return `<div class="card"><div class="row"><div style="min-width:0;flex:1"><div class="t">${t}</div><div class="meta">${m}</div></div>
+      <div class="acts">${def.quick ? def.quick(r) : ''}${def.noEdit ? '' : `<button class="sm" onclick='edit("${ent}", ${JSON.stringify(r).replace(/'/g, "&#39;")})'>✎</button>`}${['runs','emails','research'].includes(ent) ? '' : `<button class="sm danger" onclick="del('${ent}',${r.id})">🗑</button>`}</div></div></div>`; }).join('')
+      : `<div class="empty">ما فيه شي للحين.${def.noAdd ? '' : ' أضف من الزر فوق، أو قلها لسكرتيرك بالكلام 🙂'}</div>`}`;
 }
-async function delAppt(id) { if (!confirm('تلغي الموعد؟')) return; const r = await api('/api/appointments/' + id, undefined, 'DELETE'); alert(r.message); await load(); render(); }
-async function report() { const el = document.getElementById('rep'); el.textContent = 'جاري الكتابة…'; el.textContent = (await api('/api/report')).report; }
-async function saveSettings() { const r = await api('/api/settings', { businessInfo: document.getElementById('bi').value }); alert(r.message); }
-load().then(render);
-setInterval(async () => { if (current === 'pending' || current === 'appts') return; await load(); if (current === 'team') render(); }, 30000);
+let members = null;
+async function edit(ent, r = {}) {
+  const def = E[ent];
+  if (def.fields.some(f => f[2] === 'ref:members') && !members) members = await api('/api/e/members');
+  const inp = ([k, label, type, opts]) => {
+    const val = r[k];
+    if (type === 'area') return `<div class="field"><label>${label}</label><textarea name="${k}" rows="3">${esc(val)}</textarea></div>`;
+    if (type === 'bool') return `<div class="field chk"><input type="checkbox" name="${k}" ${val || (val === undefined && k === 'active') ? 'checked' : ''}><label>${label}</label></div>`;
+    if (type === 'select') return `<div class="field"><label>${label}</label><select name="${k}">${opts.map(([v, l]) => `<option value="${esc(v)}" ${String(val) === String(v) ? 'selected' : ''}>${esc(l)}</option>`).join('')}</select></div>`;
+    if (type === 'ref:members') return `<div class="field"><label>${label}</label><select name="${k}"><option value="">— أنا —</option>${members.map(m => `<option value="${m.id}" ${val == m.id ? 'selected' : ''}>${esc(m.name)}</option>`).join('')}</select></div>`;
+    const t = type === 'dt' ? 'datetime-local' : type === 'date' ? 'date' : type === 'num' ? 'number' : 'text';
+    const vv = type === 'dt' ? toLocalInput(val) : type === 'date' ? fmtD(val) : (val ?? '');
+    return `<div class="field"><label>${label}</label><input type="${t}" ${t === 'number' ? 'step="any"' : ''} name="${k}" value="${esc(vv)}"></div>`;
+  };
+  $('#dlgForm').innerHTML = `<h3>${r.id ? 'تعديل' : 'إضافة'} ${def.title}</h3>${def.fields.map(inp).join('')}
+    <div class="dlg-acts"><button class="primary" value="ok">حفظ</button><button value="cancel" formnovalidate>إلغاء</button></div>`;
+  $('#dlg').showModal();
+  $('#dlg').onclose = async () => {
+    if ($('#dlg').returnValue !== 'ok') return;
+    const fd = new FormData($('#dlgForm')), body = {};
+    for (const [k, , type] of def.fields) {
+      if (type === 'bool') body[k] = fd.get(k) === 'on';
+      else { const x = fd.get(k); body[k] = type === 'num' ? (x === '' ? null : Number(x)) : x; }
+    }
+    try { r.id ? await api(`/api/e/${ent}/${r.id}`, body, 'PATCH') : await api(`/api/e/${ent}`, body); go(cur); }
+    catch (e) { toast('⚠️ ' + e.message); }
+  };
+}
+async function patch(ent, id, body) { await api(`/api/e/${ent}/${id}`, body, 'PATCH'); go(cur); }
+async function del(ent, id) { if (!confirm('متأكد تحذفه؟')) return; await api(`/api/e/${ent}/${id}`, undefined, 'DELETE'); go(cur); }
+async function payBill(id) { const r = await api(`/api/bills/${id}/pay`, {}); toast(r.message); go(cur); }
+async function clearShopping() { const rows = (await api('/api/e/shopping')).filter(r => r.done); for (const r of rows) await api('/api/e/shopping/' + r.id, undefined, 'DELETE'); go('shopping'); }
+
+// ============ فلوسي ============
+async function money(v) {
+  const [r, exp, inc, s] = await Promise.all([api('/api/finance'), api('/api/e/expenses'), api('/api/e/income'), api('/api/settings')]);
+  const cats = [...r.by_category, ...r.budgets_unused];
+  v.innerHTML = `<div class="grid kpis">
+    <div class="kpi"><span>الدخل</span><b>${fmtMoney(r.income)}</b></div><div class="kpi"><span>المصروف</span><b>${fmtMoney(r.spent)}</b></div>
+    <div class="kpi"><span>الصافي</span><b style="color:${r.net < 0 ? 'var(--bad)' : 'var(--good)'}">${fmtMoney(r.net)}</b></div><div class="kpi"><span>التزامات شهرية</span><b>${fmtMoney(r.monthly_commitments)}</b></div></div>
+  <div class="grid two">
+    <div class="card"><h2>المصروف حسب التصنيف <span class="small">(${r.period.from} ← ${r.period.to})</span></h2>
+      ${cats.length ? cats.map(c => { const pct = c.budget ? Math.min(100, Math.round(c.spent / c.budget * 100)) : null; return `<div style="margin-bottom:10px"><div class="row"><span>${esc(c.category)}</span><span>${fmtMoney(c.spent)}${c.budget ? ' / ' + fmtMoney(c.budget) : ''}</span></div>${c.budget ? `<div class="bar ${c.spent > c.budget ? 'over' : ''}"><i style="width:${pct}%"></i></div>` : ''}</div>`; }).join('') : '<div class="meta">ما فيه مصروفات هالشهر</div>'}
+      <button class="sm" onclick="editBudgets()">✎ الميزانيات</button>
+      ${Object.keys(r.accounts || {}).length ? `<h2 style="margin-top:16px">الأرصدة (من رسائل البنك)</h2>${Object.entries(r.accounts).map(([k, a]) => `<div class="row"><span>${esc(k)}</span><b>${fmtMoney(a.balance)}</b></div><div class="meta">${fmtDT(a.at)}</div>`).join('')}` : ''}
+    </div>
+    <div class="card"><h2>أكبر المصاريف</h2>${r.biggest.map(b => `<div class="row" style="margin-bottom:6px"><span>${esc(b.vendor || b.category)}<div class="meta">${fmtD(b.date)} · ${esc(b.category)}</div></span><b>${fmtMoney(b.amount)}</b></div>`).join('') || '<div class="meta">—</div>'}</div>
+  </div>
+  <div class="toolbar" style="margin-top:6px"><button class="primary" onclick="edit('expenses')">+ مصروف</button><button onclick="edit('income')">+ دخل</button><button onclick="go('bills')">🧾 الفواتير والاشتراكات</button></div>
+  <div class="grid two"><div><h2>آخر المصروفات</h2>${exp.slice(0, 40).map(x => `<div class="card"><div class="row"><div><div class="t">${fmtMoney(x.amount)} — ${esc(x.category || '')}</div><div class="meta">${fmtD(x.date)} · ${esc(x.vendor || '')}${x.note ? ' · ' + esc(x.note) : ''}</div></div><div class="acts"><button class="sm" onclick='edit("expenses", ${JSON.stringify(x).replace(/'/g, "&#39;")})'>✎</button><button class="sm danger" onclick="del('expenses',${x.id})">🗑</button></div></div></div>`).join('') || '<div class="empty">—</div>'}</div>
+  <div><h2>الدخل</h2>${inc.slice(0, 20).map(x => `<div class="card"><div class="row"><div><div class="t">+${fmtMoney(x.amount)} — ${esc(x.source || '')}</div><div class="meta">${fmtD(x.date)}</div></div><button class="sm danger" onclick="del('income',${x.id})">🗑</button></div></div>`).join('') || '<div class="empty">—</div>'}</div></div>`;
+  window._budgets = s.budgets || {};
+}
+function editBudgets() {
+  const b = window._budgets || {};
+  const rows = Object.entries(b).concat([['', '']]);
+  $('#dlgForm').innerHTML = `<h3>الميزانيات الشهرية</h3><div id="brows">${rows.map(([k, v]) => `<div class="row field"><input placeholder="التصنيف" value="${esc(k)}"><input type="number" placeholder="المبلغ" value="${esc(v)}"></div>`).join('')}</div>
+    <button type="button" class="sm" onclick="$('#brows').insertAdjacentHTML('beforeend','<div class=&quot;row field&quot;><input placeholder=&quot;التصنيف&quot;><input type=&quot;number&quot; placeholder=&quot;المبلغ&quot;></div>')">+ تصنيف</button>
+    <div class="dlg-acts"><button class="primary" value="ok">حفظ</button><button value="cancel" formnovalidate>إلغاء</button></div>`;
+  $('#dlg').showModal();
+  $('#dlg').onclose = async () => {
+    if ($('#dlg').returnValue !== 'ok') return;
+    const out = {};
+    document.querySelectorAll('#brows .row').forEach(r => { const [a, b2] = r.querySelectorAll('input'); if (a.value.trim() && Number(b2.value) > 0) out[a.value.trim()] = Number(b2.value); });
+    await api('/api/settings', { budgets: out }); go('money');
+  };
+}
+
+// ============ الإعدادات ============
+async function settings(v) {
+  const [s, o] = await Promise.all([api('/api/settings'), api('/api/overview')]);
+  const p = s.profile || {}, a = s.autonomy || {};
+  v.innerHTML = `
+  <div class="card"><h2>👤 عرّف سكرتيرك عليك</h2>
+    <div class="field"><label>اسمك (كيف يناديك)</label><input id="p_name" value="${esc(p.name)}"></div>
+    <div class="grid two"><div class="field"><label>مدينتك</label><input id="p_city" value="${esc(p.city)}"></div><div class="field"><label>مطارك (رمز)</label><input id="p_air" value="${esc(p.home_airport)}" placeholder="RUH"></div></div>
+    <div class="field"><label>عائلتك ومعلومات تهمه يعرفها (أسماء، أعمار، مدارس...)</label><textarea id="p_family" rows="3">${esc(p.family)}</textarea></div>
+    <div class="field"><label>تفضيلاتك (الطيران، الفنادق، الأكل، أوقات المواعيد، أسلوب الردود...)</label><textarea id="p_pref" rows="3">${esc(p.preferences)}</textarea></div>
+    <div class="field"><label>توقيع الإيميلات</label><textarea id="p_sig" rows="2">${esc(p.signature)}</textarea></div>
+  </div>
+  <div class="card"><h2>⚙️ طريقة الشغل</h2>
+    <div class="field"><label>الاستقلالية</label><select id="a_level"><option value="high" ${a.level === 'high' ? 'selected' : ''}>عالية — ينفذ بنفسه</option><option value="balanced" ${a.level === 'balanced' ? 'selected' : ''}>متوازنة — الرسائل الخارجية بموافقتي</option><option value="strict" ${a.level === 'strict' ? 'selected' : ''}>كل شي بموافقتي</option></select></div>
+    <div class="field"><label>أي شي فيه مبلغ أعلى من هذا يحتاج موافقتي، ويعتبر تنبيه عملية كبيرة (ريال)</label><input id="a_thr" type="number" value="${esc(a.approval_threshold)}"></div>
+    <div class="grid two"><div class="field"><label>ساعة الموجز الصباحي</label><input id="h_m" type="number" min="0" max="23" value="${esc(s.morning_hour)}"></div><div class="field"><label>ساعة ملخص المساء</label><input id="h_r" type="number" min="0" max="23" value="${esc(s.report_hour)}"></div></div>
+    <button class="primary" onclick="saveSettings()">حفظ</button>
+  </div>
+  <div class="card"><h2>🎙️ سيري ورسائل البنك (اختصارات الآيفون)</h2>
+    <div class="small" style="line-height:1.9">رابطك الخاص (لا تشاركه مع أحد):<br><code id="hook">${esc(o.status.shortcut_url)}</code>
+    <div style="margin:6px 0"><button class="sm" onclick="navigator.clipboard.writeText($('#hook').textContent);toast('انسخ ✓')">نسخ</button> <button class="sm danger" onclick="rotateHook()">تغيير الرابط</button></div>
+    <b>١) اختصار «السكرتير» لسيري:</b> تطبيق الاختصارات ← اختصار جديد ← «إملاء النص» ← «الحصول على محتويات URL» (الرابط فوق، الطريقة POST، نص الطلب JSON: المفتاح <code>text</code> = النص المملى) ← «تحدث بالنص». سمّه «السكرتير» وقل: «يا سيري، السكرتير».<br>
+    <b>٢) رسائل البنك تلقائياً:</b> الاختصارات ← الأتمتة ← «الرسالة» ← المرسل يحتوي اسم بنكك ← تشغيل فوري ← «الحصول على محتويات URL» (نفس الرابط، POST، JSON: <code>sms</code> = محتوى الرسالة، <code>sender</code> = المرسل). كررها لكل بنك.</div>
+  </div>
+  <div class="card small" style="line-height:1.9">🔒 <b>للأمان:</b> السكرتير ما يدفع ولا يحوّل ولا يحفظ كلمات سر أو أرقام بطاقات أو رموز OTP. الدفع دائماً منك عبر الروابط اللي يجهزها لك.</div>`;
+}
+async function saveSettings() {
+  await api('/api/settings', {
+    profile: { name: $('#p_name').value, city: $('#p_city').value, home_airport: $('#p_air').value, family: $('#p_family').value, preferences: $('#p_pref').value, signature: $('#p_sig').value },
+    autonomy: { level: $('#a_level').value, approval_threshold: Number($('#a_thr').value) || 0, max_discount_pct: 0, auto_followup: false, followup_after_days: 3, auto_invoice_reminders: false },
+    morning_hour: Number($('#h_m').value), report_hour: Number($('#h_r').value)
+  });
+  toast('✅ انحفظت');
+}
+async function rotateHook() { if (!confirm('الرابط القديم بيوقف، ولازم تحدث الاختصارات. متأكد؟')) return; const r = await api('/api/shortcut/rotate', {}); $('#hook').textContent = r.url; }
+
+renderTabs(); go(cur);
+window.addEventListener('hashchange', () => { const k = location.hash.slice(1); if (k && k !== cur) go(k); });
 </script>
 </body>
 </html>
