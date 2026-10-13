@@ -99,7 +99,7 @@ async function render() {
       : wa.ok ? `<div class="banner ok">📱 <b>واتساب متصل</b> — آخر إرسال ناجح ${time(wa.at)}</div>`
       : `<div class="banner warn">📱 <b>واتساب موقوف من Meta</b> (${/131031/.test(wa.err) ? 'الحساب مقفول بانتظار التحقق' : 'خطأ في الإرسال'}). الوكلاء شغالين، وأول ما ينفك يرجع كل شي تلقائياً.</div>`;
     const infoBanner = t.hasInfo ? '' : `<div class="banner warn">⚙️ الوكلاء ما يعرفون شي عن نشاطك للحين. عبّ <a href="#" onclick="tab('settings');return false">معلومات النشاط</a> عشان يصيرون أذكى.</div>`;
-    const go = { manager:'manager', messaging:'test', qa:'pending', secretary:'appts', exec:'manager', reports:'report', learning:'pending' };
+    const go = { manager:'manager', messaging:'test', qa:'pending', secretary:'appts', exec:'manager', reports:'report', learning:'pending', integrations:'manager' };
     v.innerHTML = waBanner + infoBanner + `<div class="team">${t.agents.map(a => `
       <div class="agent-card" onclick="tab('${go[a.key]}')">
         <div class="top"><div class="ic">${a.icon}</div><div><h3>${a.name}</h3><div class="meta" style="margin:0"><span class="dot ${a.key === 'messaging' && wa && !wa.ok ? 'wait' : ''}"></span>${a.key === 'messaging' && wa && !wa.ok ? 'جاهز · بانتظار واتساب' : 'شغال'}</div></div></div>

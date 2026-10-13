@@ -19,7 +19,9 @@ const {
   BUSINESS_INFO = '',
   GRAPH_VERSION = 'v23.0',
   DATA_DIR = './data',
-  REPORT_HOUR = '21'
+  REPORT_HOUR = '21',
+  N8N_WEBHOOK_URL = '',
+  N8N_SECRET = ''
 } = process.env;
 
 const OWNER = OWNER_PHONE.replace(/\D/g, '');
@@ -27,7 +29,7 @@ const OWNER = OWNER_PHONE.replace(/\D/g, '');
 // ---------- التخزين ----------
 fs.mkdirSync(DATA_DIR, { recursive: true });
 const DATA_FILE = path.join(DATA_DIR, 'data.json');
-let db = { conversations: {}, pending: [], log: [], nextId: 1, lastReportDay: '', appointments: [], nextApptId: 1, settings: {}, ownerChat: [], lessons: [] };
+let db = { conversations: {}, pending: [], log: [], nextId: 1, lastReportDay: '', appointments: [], nextApptId: 1, settings: {}, ownerChat: [], lessons: [], emails: [], emailDrafts: [], nextDraftId: 1 };
 try { db = { ...db, ...JSON.parse(fs.readFileSync(DATA_FILE, 'utf8')) }; } catch (_) {}
 // قاعدة بيانات PostgreSQL (إذا موجودة) + نسخة احتياطية يومية؛ والملف يبقى نسخة محلية
 let pg = null, pgTimer = null;
@@ -38,6 +40,7 @@ async function initDb() {
     pg = new Pool({ connectionString: process.env.DATABASE_URL, ssl: process.env.DATABASE_URL.includes('railway.internal') ? false : { rejectUnauthorized: false } });
     await pg.query('CREATE TABLE IF NOT EXISTS app_state (id int PRIMARY KEY, data jsonb NOT NULL, updated_at timestamptz DEFAULT now())');
     await pg.query('CREATE TABLE IF NOT EXISTS backups (day text PRIMARY KEY, data jsonb NOT NULL, created_at timestamptz DEFAULT now())');
+    await pg.query('CREATE SCHEMA IF NOT EXISTS n8n'); // n8n يستخدم نفس قاعدة البيانات في مخطط مستقل
     const r = await pg.query('SELECT data FROM app_state WHERE id = 1');
     if (r.rows[0]) db = { ...db, ...r.rows[0].data };
     else await pg.query('INSERT INTO app_state (id, data) VALUES (1, $1)', [db]);
@@ -108,6 +111,23 @@ async function notifyOwner(text) {
   if (!OWNER) return;
   try { await sendWhatsApp(OWNER, text); } catch (e) { console.error('notifyOwner', e.message); }
 }
+
+// ---------- n8n (Gmail + تقويم Google) ----------
+// النظام يرسل أوامر لـ n8n عبر Webhook واحد، و n8n يرسل الأحداث لـ /api/n8n/event
+async function n8n(action, data = {}) {
+  if (!N8N_WEBHOOK_URL) throw new Error('n8n غير مربوط (حدد N8N_WEBHOOK_URL)');
+  const res = await fetch(N8N_WEBHOOK_URL, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-agents-secret': N8N_SECRET },
+    body: JSON.stringify({ action, ...data }),
+    signal: AbortSignal.timeout(30000)
+  });
+  const body = await res.text();
+  db.n8n = { ok: res.ok, at: now(), action, err: res.ok ? '' : body.slice(0, 300) };
+  if (!res.ok) throw new Error(`n8n ${res.status}: ${body.slice(0, 200)}`);
+  try { return JSON.parse(body); } catch (_) { return {}; }
+}
+const n8nReady = () => !!N8N_WEBHOOK_URL;
 
 // ---------- وكيل المراسلات ----------
 const lessonsBlock = () => db.lessons.length
@@ -253,7 +273,12 @@ function addAppointment({ title, datetime, customer, notes }) {
   db.appointments.sort((x, y) => x.at.localeCompare(y.at));
   addLog('appt', `موعد جديد #${a.id}: ${title} (${fmtRiyadh(a.at)})`);
   save();
-  return `📅 انحجز موعد #${a.id}: ${title}\nالوقت: ${fmtRiyadh(a.at)}`;
+  if (n8nReady() && !a.gcalId) {
+    n8n('calendar.create', { title: a.title, start: a.at, end: new Date(at.getTime() + 3600e3).toISOString(), description: [a.customer, a.notes].filter(Boolean).join('\n') })
+      .then(r => { if (r && r.id) { a.gcalId = r.id; save(); } })
+      .catch(e => { console.error('gcal', e.message); addLog('n8n_err', 'تعذرت إضافة الموعد لتقويم Google'); save(); });
+  }
+  return `📅 انحجز موعد #${a.id}: ${title}\nالوقت: ${fmtRiyadh(a.at)}${n8nReady() ? '\n(ينضاف لتقويم Google)' : ''}`;
 }
 function listAppointments() {
   const up = db.appointments.filter(a => new Date(a.at) > Date.now() - 3600e3);
@@ -265,6 +290,7 @@ function cancelAppointment(id) {
   const [a] = db.appointments.splice(i, 1);
   addLog('appt', `إلغاء موعد #${a.id}`);
   save();
+  if (n8nReady() && a.gcalId) n8n('calendar.delete', { id: a.gcalId }).catch(e => console.error('gcal del', e.message));
   return `🗑️ انلغى موعد #${a.id}: ${a.title}`;
 }
 
@@ -278,6 +304,50 @@ ${businessInfo()}
 لا تخترع أسعاراً أو أرقاماً غير معطاة؛ ضع [ ] مكان أي معلومة ناقصة. اكتب بالعربي ما لم يُطلب غير ذلك.`,
     [{ role: 'user', content: task }], 2000
   );
+}
+
+// ---------- البريد (Gmail عبر n8n) ----------
+function listEmails() {
+  const e = db.emails.slice(-8).reverse();
+  return e.length ? '📧 آخر الإيميلات:\n' + e.map(m => `• ${m.from}: ${m.subject}${m.summary ? `\n  ${m.summary}` : ''}`).join('\n') : 'ما وصلت إيميلات بعد';
+}
+function draftEmail({ to, subject, body }) {
+  if (!n8nReady()) return 'Gmail غير مربوط بعد (n8n)';
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to || '')) return 'ما عرفت عنوان الإيميل، اكتبه كامل';
+  const d = { id: db.nextDraftId++, to, subject: subject || '', body: body || '', at: now() };
+  db.emailDrafts.push(d); db.emailDrafts = db.emailDrafts.slice(-20); save();
+  return `✉️ مسودة #${d.id}\nإلى: ${to}\nالموضوع: ${d.subject}\n\n${d.body}\n\nللإرسال اكتب: ارسل ايميل ${d.id}`;
+}
+async function sendEmailDraft(id) {
+  const i = db.emailDrafts.findIndex(d => d.id === Number(id));
+  if (i < 0) return 'ما لقيت مسودة بهذا الرقم';
+  const d = db.emailDrafts[i];
+  await n8n('gmail.send', { to: d.to, subject: d.subject, body: d.body });
+  db.emailDrafts.splice(i, 1);
+  addLog('email_out', `إيميل لـ ${d.to}: ${d.subject}`); save();
+  return `✅ انرسل الإيميل لـ ${d.to}`;
+}
+async function onEmail({ id, from, subject, snippet }) {
+  if (id && db.emails.some(m => m.id === id)) return;
+  const m = { id: id || String(Date.now()), from: String(from || '').slice(0, 200), subject: String(subject || '').slice(0, 300), snippet: String(snippet || '').slice(0, 1500), at: now() };
+  try {
+    const r = parseJson(await askClaude(
+      'لخّص هذا الإيميل لصاحب نشاط تجاري سعودي في جملة واحدة بالعربي، وحدد هل هو مهم (عميل، طلب، فاتورة، موعد، جهة رسمية) أو غير مهم (إعلانات، نشرات، إشعارات آلية). JSON فقط: {"summary":"","important":true}',
+      [{ role: 'user', content: `من: ${m.from}\nالموضوع: ${m.subject}\n\n${m.snippet}` }], 200, CLAUDE_FAST_MODEL));
+    if (r) { m.summary = r.summary || ''; m.important = !!r.important; }
+  } catch (e) { console.error('email sum', e.message); }
+  db.emails.push(m); db.emails = db.emails.slice(-50);
+  addLog('email', `إيميل من ${m.from}: ${m.subject}`); save();
+  if (m.important) await notifyOwner(`📧 إيميل مهم\nمن: ${m.from}\nالموضوع: ${m.subject}\n${m.summary || ''}`);
+}
+function onCalendarEvent({ id, title, start }) {
+  if (!id || !start || db.appointments.some(a => a.gcalId === id)) return;
+  const at = new Date(start);
+  if (isNaN(at)) return;
+  const a = { id: db.nextApptId++, title: String(title || 'موعد').slice(0, 200), customer: '', notes: 'من تقويم Google', at: at.toISOString(), reminded: false, gcalId: id };
+  db.appointments.push(a);
+  db.appointments.sort((x, y) => x.at.localeCompare(y.at));
+  addLog('appt', `موعد من تقويم Google #${a.id}: ${a.title} (${fmtRiyadh(a.at)})`); save();
 }
 
 // ---------- مدير الفريق ----------
@@ -295,12 +365,15 @@ async function runOwner(text) {
   }
   if (/^(المواعيد|مواعيدي)/.test(t)) return listAppointments();
   if ((m = t.match(/^الغ(?:ي|اء)\s+موعد\s+(\d+)/))) return cancelAppointment(m[1]);
+  if ((m = t.match(/^ارسل\s+(?:ال)?[اإ]يميل\s+(\d+)/))) return sendEmailDraft(m[1]);
+  if (/^([اإ]يميلاتي|البريد|الايميلات|الإيميلات)/.test(t)) return listEmails();
 
   const decision = parseJson(await askClaude(
     `أنت "مدير الفريق" لصاحب النشاط. تستقبل أوامره وتوزعها على الفريق:
 - السكرتير: يحجز المواعيد ويعرضها ويلغيها.
 - وكيل التنفيذ: يجهّز عروض أسعار، رسائل، منشورات، نصوص، ملفات نصية.
 - وكيل التقارير: تقرير اليوم.
+- البريد (Gmail): يعرض آخر الإيميلات ويكتب مسودة إيميل (لا يُرسل إلا بعد تأكيد صاحب النشاط).
 - وكيل المراسلات: يرد على العملاء، والطلبات اللي تحتاج موافقة تظهر برقم (موافق رقم / رفض رقم / عدل رقم النص).
 الوقت الحالي بتوقيت الرياض: ${riyadhNow()}
 طلبات معلقة: ${db.pending.length} | مواعيد قادمة: ${db.appointments.filter(a => new Date(a.at) > Date.now()).length}
@@ -309,6 +382,8 @@ async function runOwner(text) {
 {"action":"list_appointments"}
 {"action":"cancel_appointment","id":3}
 {"action":"report"}
+{"action":"list_emails"}
+{"action":"draft_email","to":"email@example.com","subject":"","body":"نص الإيميل كاملاً"}
 {"action":"execute","task":"وصف المهمة كاملاً"}
 {"action":"reply","text":"ردك المختصر بالعربي"}
 لا تدّعي تنفيذ شيء لم يُنفذ. إذا كان وقت الموعد ناقصاً استخدم reply واسأل عنه.`,
@@ -320,6 +395,8 @@ async function runOwner(text) {
     case 'list_appointments': return listAppointments();
     case 'cancel_appointment': return cancelAppointment(decision.id);
     case 'report': return '📊 ' + await makeReport();
+    case 'list_emails': return listEmails();
+    case 'draft_email': return draftEmail(decision);
     case 'execute': return '🛠️ ' + await execute(decision.task || t);
     default: return decision.text || 'تمام';
   }
@@ -367,6 +444,21 @@ app.post('/webhook', (req, res) => {
   }
 });
 
+// أحداث n8n (إيميل جديد / موعد جديد في تقويم Google)
+app.post('/api/n8n/event', async (req, res) => {
+  const got = Buffer.from(req.get('x-agents-secret') || '');
+  const want = Buffer.from(N8N_SECRET || '');
+  if (!N8N_SECRET || got.length !== want.length || !crypto.timingSafeEqual(got, want)) return res.sendStatus(401);
+  const { type, data = {} } = req.body || {};
+  try {
+    if (type === 'email.received') await onEmail(data);
+    else if (type === 'calendar.event') onCalendarEvent(data);
+    else return res.status(400).json({ error: 'نوع غير معروف' });
+    db.n8n = { ...(db.n8n || {}), lastEvent: now(), ok: true };
+    res.json({ ok: true });
+  } catch (e) { console.error('n8n event', e.message); res.status(500).json({ error: e.message.slice(0, 200) }); }
+});
+
 // حماية لوحة التحكم بكلمة سر
 function auth(req, res, next) {
   if (!DASHBOARD_PASSWORD) return res.status(500).send('حدد DASHBOARD_PASSWORD في الإعدادات');
@@ -375,7 +467,7 @@ function auth(req, res, next) {
   if (pass === DASHBOARD_PASSWORD) return next();
   res.set('WWW-Authenticate', 'Basic realm="dashboard"').status(401).send('مطلوب كلمة السر');
 }
-app.use((req, res, next) => (req.path.startsWith('/webhook') || ['/health','/privacy','/manifest.json','/apple-touch-icon.png','/icon-512.png'].includes(req.path) ? next() : auth(req, res, next)));
+app.use((req, res, next) => (req.path.startsWith('/webhook') || req.path === '/api/n8n/event' || ['/health','/privacy','/manifest.json','/apple-touch-icon.png','/icon-512.png'].includes(req.path) ? next() : auth(req, res, next)));
 app.use(express.static(path.join(__dirname, 'public')));
 
 app.get('/api/state', (_req, res) => {
@@ -450,6 +542,7 @@ app.get('/api/team', (_req, res) => {
       { key: 'secretary', icon: '📅', name: 'السكرتير', role: 'يحجز المواعيد ويذكّرك قبلها بساعة', stat: upcoming.length, unit: 'موعد قادم', last: last('appt'), extra: upcoming[0] ? `التالي: ${fmtRiyadh(upcoming[0].at)} — ${upcoming[0].title}` : '' },
       { key: 'exec', icon: '🛠️', name: 'وكيل التنفيذ', role: 'يجهّز عروض الأسعار والرسائل والمنشورات', stat: n('exec'), unit: 'مهمة اليوم', last: last('exec') },
       { key: 'reports', icon: '📊', name: 'وكيل التقارير', role: `يلخص يومك ويرسله لك الساعة ${REPORT_HOUR}:00`, stat: n('report'), unit: 'تقرير اليوم', last: last('report') },
+      { key: 'integrations', icon: '🔗', name: 'وكيل الربط (n8n)', role: n8nReady() ? 'يربط Gmail وتقويم Google بالفريق' : 'غير مربوط بعد — Gmail وتقويم Google', stat: n('email'), unit: 'إيميل اليوم', last: (db.n8n && (db.n8n.lastEvent || db.n8n.at)) || null, extra: db.n8n && db.n8n.ok === false ? '⚠️ ' + (db.n8n.err || 'خطأ') : '' },
       { key: 'learning', icon: '🎓', name: 'الذاكرة والتعلّم', role: 'يحفظ تعديلاتك ويتعلم أسلوبك في الرد', stat: db.lessons.length, unit: 'درس محفوظ', last: last('lesson') }
     ],
     activity: db.log.slice(-25).reverse()
@@ -464,7 +557,13 @@ app.post('/api/settings', (req, res) => {
   addLog('settings', 'تحديث معلومات النشاط'); save();
   res.json({ message: '✅ انحفظت معلومات النشاط' });
 });
-app.get('/health', (_req, res) => res.send('ok'));
+app.get('/health', async (_req, res) => {
+  if (pg) {
+    try { await Promise.race([pg.query('SELECT 1'), new Promise((_, r) => setTimeout(() => r(new Error('timeout')), 5000))]); }
+    catch (e) { return res.status(503).send('db down: ' + e.message); }
+  }
+  res.send('ok');
+});
 app.get('/privacy', (_req, res) => res.type('html').send(`<!doctype html><html lang="ar" dir="rtl"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>سياسة الخصوصية</title><body style="font-family:sans-serif;max-width:700px;margin:40px auto;padding:0 16px;line-height:1.8">
 <h1>سياسة الخصوصية</h1>
 <p>يستخدم هذا النظام رسائل واتساب التي يرسلها العملاء إلى النشاط التجاري للرد على استفساراتهم فقط.</p>

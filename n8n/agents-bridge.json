@@ -1,0 +1,378 @@
+{
+  "name": "جسر الوكلاء — Gmail وتقويم Google",
+  "nodes": [
+    {
+      "id": "31499b80-2336-40c7-9f66-db205125b1bc",
+      "name": "أوامر الوكلاء",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        200
+      ],
+      "webhookId": "8a2870cb-321d-464f-bfcd-4866518103ac",
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "agents",
+        "authentication": "headerAuth",
+        "responseMode": "responseNode",
+        "options": {}
+      }
+    },
+    {
+      "id": "0f0f09ed-7413-4c2a-b4e2-ae4f7c4171e5",
+      "name": "نوع الأمر",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [
+        240,
+        200
+      ],
+      "parameters": {
+        "rules": {
+          "values": [
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "54e97ecd-8e62-43c6-962e-06d46176eeb2",
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "calendar.create",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "calendar.create"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "3750ed9a-d97a-4c59-a7ca-4d973ca22699",
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "calendar.delete",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "calendar.delete"
+            },
+            {
+              "conditions": {
+                "options": {
+                  "caseSensitive": true,
+                  "leftValue": "",
+                  "typeValidation": "strict"
+                },
+                "conditions": [
+                  {
+                    "id": "4d8fb62a-ae68-47cf-83f8-f6bf27fb4d80",
+                    "leftValue": "={{ $json.body.action }}",
+                    "rightValue": "gmail.send",
+                    "operator": {
+                      "type": "string",
+                      "operation": "equals"
+                    }
+                  }
+                ],
+                "combinator": "and"
+              },
+              "renameOutput": true,
+              "outputKey": "gmail.send"
+            }
+          ]
+        },
+        "options": {}
+      }
+    },
+    {
+      "id": "199c53a7-28d4-4206-bf3d-758e6b1a2b34",
+      "name": "إضافة موعد للتقويم",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        500,
+        0
+      ],
+      "parameters": {
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "id"
+        },
+        "start": "={{ $json.body.start }}",
+        "end": "={{ $json.body.end }}",
+        "additionalFields": {
+          "summary": "={{ $json.body.title }}",
+          "description": "={{ $json.body.description }}"
+        }
+      }
+    },
+    {
+      "id": "11e37246-8577-417a-a914-e21e5acbdf7c",
+      "name": "حذف موعد من التقويم",
+      "type": "n8n-nodes-base.googleCalendar",
+      "typeVersion": 1.3,
+      "position": [
+        500,
+        200
+      ],
+      "parameters": {
+        "operation": "delete",
+        "calendar": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "id"
+        },
+        "eventId": "={{ $json.body.id }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "28c41f30-442e-4274-a128-b1255dc17bfe",
+      "name": "إرسال إيميل",
+      "type": "n8n-nodes-base.gmail",
+      "typeVersion": 2.1,
+      "position": [
+        500,
+        400
+      ],
+      "parameters": {
+        "sendTo": "={{ $json.body.to }}",
+        "subject": "={{ $json.body.subject }}",
+        "emailType": "text",
+        "message": "={{ $json.body.body }}",
+        "options": {
+          "appendAttribution": false
+        }
+      }
+    },
+    {
+      "id": "e628a530-f5af-4521-ba67-59cd57fabc13",
+      "name": "رد بالمعرّف",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1.1,
+      "position": [
+        760,
+        200
+      ],
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ { \"ok\": true, \"id\": $json.id } }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "8e511fdf-f4eb-4072-a53c-78dfa6ae764d",
+      "name": "إيميل جديد",
+      "type": "n8n-nodes-base.gmailTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        700
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 2,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "filters": {
+          "labelIds": [
+            "INBOX"
+          ]
+        }
+      }
+    },
+    {
+      "id": "6bea3b77-0472-4097-b40c-8bed3fd34126",
+      "name": "أرسل الإيميل للوكلاء",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        700
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://agents-system-production.up.railway.app/api/n8n/event",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'email.received', data: { id: $json.id, from: $json.From, subject: $json.Subject, snippet: $json.snippet } }) }}",
+        "options": {}
+      }
+    },
+    {
+      "id": "44e607b5-24f3-42a0-ac46-e514f489a6fe",
+      "name": "موعد جديد في التقويم",
+      "type": "n8n-nodes-base.googleCalendarTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        950
+      ],
+      "parameters": {
+        "pollTimes": {
+          "item": [
+            {
+              "mode": "everyX",
+              "value": 5,
+              "unit": "minutes"
+            }
+          ]
+        },
+        "calendarId": {
+          "__rl": true,
+          "value": "primary",
+          "mode": "id"
+        },
+        "triggerOn": "eventCreated",
+        "options": {}
+      }
+    },
+    {
+      "id": "a078ea97-0f38-4e5e-ad6b-17c38b4e097e",
+      "name": "أرسل الموعد للوكلاء",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        260,
+        950
+      ],
+      "parameters": {
+        "method": "POST",
+        "url": "https://agents-system-production.up.railway.app/api/n8n/event",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ type: 'calendar.event', data: { id: $json.id, title: $json.summary, start: $json.start.dateTime || $json.start.date } }) }}",
+        "options": {}
+      }
+    }
+  ],
+  "connections": {
+    "أوامر الوكلاء": {
+      "main": [
+        [
+          {
+            "node": "نوع الأمر",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "نوع الأمر": {
+      "main": [
+        [
+          {
+            "node": "إضافة موعد للتقويم",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "حذف موعد من التقويم",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "إرسال إيميل",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "إضافة موعد للتقويم": {
+      "main": [
+        [
+          {
+            "node": "رد بالمعرّف",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "حذف موعد من التقويم": {
+      "main": [
+        [
+          {
+            "node": "رد بالمعرّف",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "إرسال إيميل": {
+      "main": [
+        [
+          {
+            "node": "رد بالمعرّف",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "إيميل جديد": {
+      "main": [
+        [
+          {
+            "node": "أرسل الإيميل للوكلاء",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "موعد جديد في التقويم": {
+      "main": [
+        [
+          {
+            "node": "أرسل الموعد للوكلاء",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Riyadh"
+  },
+  "pinData": {}
+}
