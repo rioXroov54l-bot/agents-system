@@ -137,18 +137,28 @@ function saNumber(n) {
   if (/^5\d{8}$/.test(d)) d = '966' + d;
   return d;
 }
+const pickPair = r => r && (r.pairingCode || (r.qrcode && r.qrcode.pairingCode) || (r.instance && r.instance.pairingCode)) || null;
 async function evoPair(number) {
   const num = saNumber(number);
   if (!/^\d{10,15}$/.test(num)) throw new Error('رقم غير صحيح. اكتبه مثل 05xxxxxxxx أو 9665xxxxxxxx');
-  const get = () => evo('GET', `/instance/connect/${C.EVOLUTION_INSTANCE}?number=${num}`);
-  let r = await get();
-  if (!r.pairingCode) { // جلسة QR قديمة شغالة: نصفّرها ونطلب من جديد
-    await evo('DELETE', `/instance/logout/${C.EVOLUTION_INSTANCE}`).catch(() => {});
-    await new Promise(ok => setTimeout(ok, 2500));
-    r = await get();
+  const inst = C.EVOLUTION_INSTANCE, wait = ms => new Promise(ok => setTimeout(ok, ms));
+  const connect = () => evo('GET', `/instance/connect/${inst}?number=${num}`);
+  let r = await connect().catch(e => ({ err: e.message })), code = pickPair(r);
+  if (!code) {
+    // الطريقة المضمونة: نحذف النسخة ونعيد إنشاءها بالرقم، فيرجع كود الربط مباشرة
+    await evo('DELETE', `/instance/logout/${inst}`).catch(() => {});
+    await evo('DELETE', `/instance/delete/${inst}`).catch(() => {});
+    await wait(2000);
+    const webhook = { enabled: true, url: `${C.INTERNAL_URL || C.PUBLIC_URL}/evolution/${evoSecret()}`, byEvents: false, base64: true, events: ['MESSAGES_UPSERT', 'CONNECTION_UPDATE', 'QRCODE_UPDATED'] };
+    r = await evo('POST', '/instance/create', { instanceName: inst, number: num, qrcode: true, integration: 'WHATSAPP-BAILEYS', rejectCall: false, groupsIgnore: true, alwaysOnline: false, readMessages: false, syncFullHistory: false, webhook }).catch(e => ({ err: e.message }));
+    code = pickPair(r);
+    for (let i = 0; !code && i < 4; i++) { await wait(2500); r = await connect().catch(e => ({ err: e.message })); code = pickPair(r); }
   }
-  if (!r.pairingCode) throw new Error('ما رجع كود ربط من واتساب، جرب بعد دقيقة');
-  const code = String(r.pairingCode).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  if (!code) {
+    console.error('evoPair: no pairingCode', JSON.stringify(r).slice(0, 500));
+    throw new Error('ما رجع كود ربط من واتساب. التفاصيل: ' + JSON.stringify(r).replace(/"base64":"[^"]*"/, '"base64":"…"').slice(0, 250));
+  }
+  code = String(code).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
   return { number: num, code: code.length === 8 ? code.slice(0, 4) + '-' + code.slice(4) : code };
 }
 async function evoLogout() { return evo('DELETE', `/instance/logout/${C.EVOLUTION_INSTANCE}`); }
