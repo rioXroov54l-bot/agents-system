@@ -186,7 +186,10 @@ async function home(v) {
   const [o, brief] = await Promise.all([api('/api/overview'), api('/api/quick/today')]);
   const k = o.kpi, st = o.status;
   let banners = '';
-  if (!st.telegram.enabled) banners += `<div class="banner warn">📱 <b>اربط تيليجرام:</b> أضف <code>TELEGRAM_BOT_TOKEN</code> في متغيرات Railway لخدمة agents-system.</div>`;
+  const wa = st.whatsapp || {};
+  if (wa.enabled && !wa.connected) banners += `<div class="banner warn">💬 <b>اربط واتساب السكرتير:</b> افتح <a href="#settings" onclick="go('settings')">الإعدادات</a> ← واتساب وامسح رمز QR من جوال رقم السكرتير.</div>`;
+  else if (wa.connected) banners += `<div class="banner ok">💬 واتساب السكرتير متصل — كلمه من رقمك الشخصي بأي وقت.</div>`;
+  if (!st.telegram.enabled) { if (!wa.enabled) banners += `<div class="banner warn">📱 <b>اربط تيليجرام:</b> أضف <code>TELEGRAM_BOT_TOKEN</code> في إعدادات السيرفر.</div>`; }
   else if (!st.telegram.linked) banners += `<div class="banner warn">📱 <b>خطوة أخيرة:</b> افتح بوتك في تيليجرام وأرسل له: <code>/start ${esc(st.telegram.pair_code)}</code></div>`;
   else banners += `<div class="banner ok">📱 تيليجرام مربوط — كلم سكرتيرك من هناك بأي وقت.</div>`;
   if (!st.profile_set) banners += `<div class="banner warn">👤 عرّف سكرتيرك عليك (اسمك، عائلتك، تفضيلاتك) من <a href="#settings" onclick="go('settings')">الإعدادات</a> عشان يخدمك أحسن.</div>`;
