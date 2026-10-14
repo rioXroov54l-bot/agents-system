@@ -282,6 +282,20 @@ app.get('/api/settings', wrap(async (_req, res) => {
 }));
 app.get('/api/whatsapp', wrap(async (_req, res) => res.json({ ...(await ch.evoStatus()), owner_phone: C.OWNER_PHONE ? '…' + C.OWNER_PHONE.slice(-4) : null }))); 
 app.get('/api/whatsapp/qr', wrap(async (_req, res) => res.json(await ch.evoQR())));
+// رقم المالك (رقمك الشخصي) — السكرتير يرد عليه هو بس
+app.post('/api/whatsapp/owner', wrap(async (req, res) => {
+  const num = ch.saNumber((req.body || {}).number);
+  if (!/^\d{10,15}$/.test(num)) return res.status(400).json({ error: 'رقم غير صحيح. اكتبه مثل 05xxxxxxxx' });
+  try { // ما نسمح يكون نفس رقم السكرتير
+    const list = await ch.evo('GET', '/instance/fetchInstances');
+    const me = (Array.isArray(list) ? list : []).map(i => ch.waNumber(i.ownerJid || (i.instance && i.instance.owner) || '')).filter(Boolean);
+    if (me.some(n => n.slice(-9) === num.slice(-9))) return res.status(400).json({ error: 'هذا رقم السكرتير نفسه! اكتب رقمك الشخصي اللي بتكلمه منه' });
+  } catch (_) {}
+  await db.setSetting('owner_phone', num);
+  C.OWNER_PHONE = num;
+  await db.log('settings', `تغيير رقم المالك إلى …${num.slice(-4)}`);
+  res.json({ message: '✅ انحفظ رقمك', owner_phone: '…' + num.slice(-4) });
+}));
 app.post('/api/whatsapp/pair', wrap(async (req, res) => res.json(await ch.evoPair((req.body || {}).number))));
 app.post('/api/whatsapp/logout', wrap(async (_req, res) => { await ch.evoLogout(); res.json({ message: 'انفصل الرقم' }); }));
 
@@ -324,6 +338,7 @@ app.post('/api/settings', wrap(async (req, res) => {
 
 async function start() {
   await db.connect();
+  { const s = await db.getSettings(); if (s.owner_phone) C.OWNER_PHONE = String(s.owner_phone).replace(/\D/g, ''); }
   app.listen(C.PORT, () => console.log('🚀 النظام شغال على المنفذ', C.PORT, '(قاعدة بيانات)'));
   await ch.setupTelegramWebhook();
   (async () => { for (let i = 0; i < 20; i++) { try { await ch.evo('GET', '/'); break; } catch (_) { if (!ch.evoEnabled()) return; await new Promise(r => setTimeout(r, 15000)); } } await ch.setupEvolution(); })();
