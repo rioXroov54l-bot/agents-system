@@ -189,8 +189,8 @@ async function home(v) {
   const wa = st.whatsapp || {};
   if (wa.enabled && !wa.connected) banners += `<div class="banner warn">💬 <b>اربط واتساب السكرتير:</b> افتح <a href="#settings" onclick="go('settings')">الإعدادات</a> ← واتساب وامسح رمز QR من جوال رقم السكرتير.</div>`;
   else if (wa.connected) banners += `<div class="banner ok">💬 واتساب السكرتير متصل — كلمه من رقمك الشخصي بأي وقت.</div>`;
-  if (!st.telegram.enabled) { if (!wa.enabled) banners += `<div class="banner warn">📱 <b>اربط تيليجرام:</b> أضف <code>TELEGRAM_BOT_TOKEN</code> في إعدادات السيرفر.</div>`; }
-  else if (!st.telegram.linked) banners += `<div class="banner warn">📱 <b>خطوة أخيرة:</b> افتح بوتك في تيليجرام وأرسل له: <code>/start ${esc(st.telegram.pair_code)}</code></div>`;
+  if (!st.telegram.enabled) banners += `<div class="banner warn">📱 <b>تنبيهات تيليجرام:</b> اربط بوتك من <a href="#settings" onclick="go('settings')">الإعدادات</a> ← تيليجرام.</div>`;
+  else if (!st.telegram.linked) banners += `<div class="banner warn">📱 <b>خطوة أخيرة:</b> ${st.telegram.bot ? `<a href="https://t.me/${esc(st.telegram.bot)}?start=${esc(st.telegram.pair_code)}" target="_blank"><b>اضغط هنا</b></a> وبعدين «Start» في تيليجرام` : `أرسل لبوتك: <code>/start ${esc(st.telegram.pair_code)}</code>`}</div>`;
   else banners += `<div class="banner ok">📱 تيليجرام مربوط — كلم سكرتيرك من هناك بأي وقت.</div>`;
   if (!st.profile_set) banners += `<div class="banner warn">👤 عرّف سكرتيرك عليك (اسمك، عائلتك، تفضيلاتك) من <a href="#settings" onclick="go('settings')">الإعدادات</a> عشان يخدمك أحسن.</div>`;
   const K = (label, val, alert) => `<div class="kpi ${alert ? 'alert' : ''}"><span>${label}</span><b>${val}</b></div>`;
@@ -348,6 +348,12 @@ async function settings(v) {
     <button class="primary" onclick="saveSettings()">حفظ</button>
   </div>
   <div class="card" id="wacard"><h2>🟢 واتساب (رقم السكرتير)</h2><div id="wabox" class="small">⏳</div></div>
+  <div class="card"><h2>📱 تيليجرام (التنبيهات)</h2><div class="small" style="line-height:1.9">${(() => { const t = o.status.telegram;
+    if (!t.enabled) return 'غير مربوط.';
+    if (!t.linked) return `البوت ${t.bot ? '<b dir="ltr">@' + esc(t.bot) + '</b>' : ''} جاهز ✅ — باقي تربطه بحسابك: ${t.bot ? `<a href="https://t.me/${esc(t.bot)}?start=${esc(t.pair_code)}" target="_blank"><b>اضغط هنا</b></a> ثم «Start»` : `أرسل للبوت <code>/start ${esc(t.pair_code)}</code>`}`;
+    return `✅ مربوط ${t.bot ? '(<b dir="ltr">@' + esc(t.bot) + '</b>)' : ''} — التنبيهات والموافقات توصلك هناك.`; })()}</div>
+    <div class="small" style="margin-top:8px">${o.status.telegram.enabled ? 'تغيير البوت:' : 'الصق توكن البوت من <b>@BotFather</b>:'}</div>
+    <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input id="tg_tok" type="password" autocomplete="off" placeholder="123456789:AA..." dir="ltr" style="max-width:320px"><button class="sm" onclick="saveTg()">حفظ</button></div></div>
   <div class="card"><h2>🔒 مين يرد عليه السكرتير؟</h2>
     <select onchange="api('/api/settings',{reply_others:this.value==='1'}).then(()=>toast('✅ انحفظ'))">
       <option value="0" ${!s.reply_others?'selected':''}>أنا بس (يتجاهل أي أحد ثاني)</option>
@@ -355,7 +361,7 @@ async function settings(v) {
     </select></div>
   <div class="card"><h2>🔔 وين توصلك التنبيهات؟</h2>
     <select id="n_ch" onchange="api('/api/settings',{notify_channel:this.value}).then(()=>toast('✅ انحفظ'))">
-      ${[['auto','تلقائي (تيليجرام، وإذا ما فيه فواتساب)'],['telegram','تيليجرام'],['whatsapp','واتساب'],['both','الاثنين']].map(([k,l]) => `<option value="${k}" ${(s.notify_channel||'auto')===k?'selected':''}>${l}</option>`).join('')}
+      ${[['auto','تلقائي (تيليجرام إذا مربوط، وإلا واتساب)'],['telegram','تيليجرام'],['whatsapp','واتساب'],['both','الاثنين']].map(([k,l]) => `<option value="${k}" ${(s.notify_channel||'auto')===k?'selected':''}>${l}</option>`).join('')}
     </select></div>
   <div class="card"><h2>🎙️ سيري ورسائل البنك (اختصارات الآيفون)</h2>
     <div class="small" style="line-height:1.9">رابطك الخاص (لا تشاركه مع أحد):<br><code id="hook">${esc(o.status.shortcut_url)}</code>
@@ -388,6 +394,10 @@ async function loadWA(force) {
   box.innerHTML = `الحالة: ${esc(w.state)}<br>${pairForm}<hr style="opacity:.2;margin:12px 0"><b>أو بالرمز QR:</b> واتساب على جوال السكرتير ← الإعدادات ← الأجهزة المرتبطة ← ربط جهاز ← امسح الرمز:<br>` +
     (q.base64 ? `<img src="${q.base64.startsWith('data:') ? q.base64 : 'data:image/png;base64,' + q.base64}" style="width:260px;max-width:100%;background:#fff;padding:8px;border-radius:12px;margin-top:8px">` : `<div style="color:var(--bad)">${esc(q.error || 'ما طلع رمز، جرب تحديث')}</div>`) +
     `<div class="small">الرمز يتجدد تلقائياً كل 20 ثانية.</div>`;
+}
+async function saveTg() {
+  const t = ($('#tg_tok').value || '').trim(); if (!t) return toast('الصق التوكن');
+  try { const r = await api('/api/telegram/token', { token: t }); toast(r.message); go('settings'); } catch (e) { toast('⚠️ ' + e.message); }
 }
 async function saveOwner() {
   const n = ($('#own_num').value || '').trim(); if (!n) return toast('اكتب رقمك الشخصي');

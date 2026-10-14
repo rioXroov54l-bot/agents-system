@@ -163,7 +163,7 @@ app.get('/api/overview', wrap(async (_req, res) => {
     money, team,
     activity: await db.many('SELECT type, agent, text, at FROM activity ORDER BY id DESC LIMIT 30'),
     status: {
-      telegram: { enabled: ch.tgEnabled(), linked: !!(await ch.ownerTelegramId()), pair_code: ch.tgEnabled() && !(await ch.ownerTelegramId()) ? await tg.ensurePairCode() : null },
+      telegram: { enabled: ch.tgEnabled(), bot: (await db.getSettings()).tg_bot || null, linked: !!(await ch.ownerTelegramId()), pair_code: ch.tgEnabled() && !(await ch.ownerTelegramId()) ? await tg.ensurePairCode() : null },
       n8n: { enabled: ch.n8nReady(), ...(s.n8n_status || {}) },
       whatsapp: await ch.evoStatus(),
       shortcut_url: `${C.PUBLIC_URL}/hook/${await shortcutToken()}`,
@@ -296,6 +296,19 @@ app.post('/api/whatsapp/owner', wrap(async (req, res) => {
   await db.log('settings', `تغيير رقم المالك إلى …${num.slice(-4)}`);
   res.json({ message: '✅ انحفظ رقمك', owner_phone: '…' + num.slice(-4) });
 }));
+// بوت تيليجرام من اللوحة (بدل تعديل ملفات السيرفر)
+app.post('/api/telegram/token', wrap(async (req, res) => {
+  const token = String((req.body || {}).token || '').trim();
+  if (!/^\d{6,12}:[\w-]{30,}$/.test(token)) return res.status(400).json({ error: 'التوكن مو بالشكل الصحيح. انسخه كامل من BotFather (أرقام ثم : ثم حروف)' });
+  const r = await fetch(`${ch.TG_BASE}/bot${token}/getMe`, { signal: AbortSignal.timeout(15000) }).then(x => x.json()).catch(() => ({}));
+  if (!r.ok) return res.status(400).json({ error: 'تيليجرام رفض التوكن. تأكد إنك نسخت آخر توكن من BotFather' });
+  await db.setSetting('tg_token', token);
+  await db.setSetting('tg_bot', r.result.username);
+  C.TELEGRAM_BOT_TOKEN = token;
+  await ch.setupTelegramWebhook();
+  await db.log('settings', `ربط بوت تيليجرام @${r.result.username}`);
+  res.json({ message: `✅ انربط البوت @${r.result.username}`, bot: r.result.username });
+}));
 app.post('/api/whatsapp/pair', wrap(async (req, res) => res.json(await ch.evoPair((req.body || {}).number))));
 app.post('/api/whatsapp/logout', wrap(async (_req, res) => { await ch.evoLogout(); res.json({ message: 'انفصل الرقم' }); }));
 
@@ -338,7 +351,7 @@ app.post('/api/settings', wrap(async (req, res) => {
 
 async function start() {
   await db.connect();
-  { const s = await db.getSettings(); if (s.owner_phone) C.OWNER_PHONE = String(s.owner_phone).replace(/\D/g, ''); }
+  { const s = await db.getSettings(); if (s.owner_phone) C.OWNER_PHONE = String(s.owner_phone).replace(/\D/g, ''); if (s.tg_token) C.TELEGRAM_BOT_TOKEN = s.tg_token; }
   app.listen(C.PORT, () => console.log('🚀 النظام شغال على المنفذ', C.PORT, '(قاعدة بيانات)'));
   await ch.setupTelegramWebhook();
   (async () => { for (let i = 0; i < 20; i++) { try { await ch.evo('GET', '/'); break; } catch (_) { if (!ch.evoEnabled()) return; await new Promise(r => setTimeout(r, 15000)); } } await ch.setupEvolution(); })();

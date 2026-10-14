@@ -58,6 +58,7 @@ async function handleUpdate(u) {
     if (code && s.telegram.pair_code && code.toUpperCase() === s.telegram.pair_code && !C.TELEGRAM_OWNER_ID) {
       await db.setSetting('telegram', { ...s.telegram, owner_id: chatId, pair_code: '' });
       await db.log('telegram', 'ربط حساب المالك بتيليجرام');
+      if (ch.evoEnabled() && C.OWNER_PHONE) ch.sendWhatsApp(C.OWNER_PHONE, '✅ تيليجرام انربط. التنبيهات والموافقات بتوصلك هناك، وتقدر تكلمني من واتساب أو تيليجرام — نفس السكرتير ونفس الذاكرة 🤝').catch(() => {});
       return ch.tgSend(chatId, '✅ تم ربط حسابك. أنا جاهز!\n\n' + HELP);
     }
     if (code) {
