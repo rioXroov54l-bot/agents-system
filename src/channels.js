@@ -98,7 +98,7 @@ async function evoSendText(to, text) {
   let t = waFormat(text).trim() || '—';
   while (t.length > 3500) { let cut = t.lastIndexOf('\n', 3500); if (cut < 800) cut = 3500; chunks.push(t.slice(0, cut)); t = t.slice(cut); }
   chunks.push(t);
-  for (const c of chunks) await evo('POST', `/message/sendText/${C.EVOLUTION_INSTANCE}`, { number: waNumber(to), text: c });
+  for (const c of chunks) await evo('POST', `/message/sendText/${C.EVOLUTION_INSTANCE}`, { number: saNumber(waNumber(to)), text: c });
 }
 
 // يتأكد إن نسخة واتساب موجودة ومربوطة بالـ webhook حقنا

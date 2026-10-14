@@ -441,8 +441,19 @@ def('set_reminder', 'ذكّر المالك بشيء في وقت محدد (يوص
     return `⏰ بذكرك ${U.fmt(iso)}: ${text} (#${r.id})`;
   });
 
-def('list_emails', 'آخر الإيميلات الواردة (ملخصة ومصنفة).', S({ important_only: bool('المهمة فقط'), unhandled_only: bool('غير المعالجة'), limit: int('العدد') }),
+def('list_emails', 'الإيميلات اللي وصلت للنظام وانحفظت (ملخصة ومصنفة). لقراءة Gmail لحظياً استخدم gmail_search.', S({ important_only: bool('المهمة فقط'), unhandled_only: bool('غير المعالجة'), limit: int('العدد') }),
   async ({ important_only, unhandled_only, limit = 15 }) => db.many('SELECT id, from_addr, subject, summary, category, important, handled, at FROM emails WHERE (NOT $1 OR important) AND (NOT $2 OR NOT handled) ORDER BY at DESC LIMIT $3', [!!important_only, !!unhandled_only, Math.min(limit, 50)]));
+
+// ---------- Gmail وتقويم Google (قراءة مباشرة) ----------
+const G = require('./google');
+def('gmail_search', 'اقرأ إيميلات Gmail حق المالك مباشرة الحين (مو من الأرشيف). استخدم صيغة بحث Gmail: اليوم = newer_than:1d، غير المقروءة = is:unread، من شخص = from:اسم أو إيميل، موضوع = subject:كلمة، مع مرفقات = has:attachment. يرجع المرسل والموضوع والتاريخ ومقتطف.',
+  S({ query: str('صيغة البحث (افتراضي newer_than:1d)'), max: int('العدد (افتراضي 15، أقصى 30)') }),
+  async ({ query, max }) => G.gmailSearch({ query: query || 'newer_than:1d', max }));
+def('gmail_read', 'افتح إيميل كامل من Gmail بالمعرّف (id) من gmail_search عشان تقرأ نصه كامل.',
+  S({ id: str('معرّف الإيميل') }, ['id']), async ({ id }) => G.gmailRead(id));
+def('google_calendar', 'اعرض مواعيد تقويم Google حق المالك مباشرة في فترة (افتراضي: الأسبوع الجاي).',
+  S({ from: str('من YYYY-MM-DD HH:mm'), to: str('إلى YYYY-MM-DD HH:mm') }),
+  async ({ from, to }) => G.calendarEvents({ from: from && U.parseLocal(from), to: to && U.parseLocal(to) }));
 
 def('send_email', 'أرسل إيميل من Gmail الشركة. للعملاء يمر على مراجع الجودة وحدود الصلاحية.',
   S({ to: str('الإيميل'), subject: str('الموضوع'), body: str('النص كاملاً موقّعاً باسم الشركة'), customer_id: int('عميل مرتبط'), internal: bool('true لو المرسل إليه المالك أو موظف') }, ['to', 'subject', 'body']),
@@ -451,8 +462,8 @@ def('send_email', 'أرسل إيميل من Gmail الشركة. للعملاء �
     return guardedExternal('send_email', { ...a, agent: ctx.agent }, { text: a.body, purpose: `إيميل إلى ${a.to}: ${a.subject}` });
   });
 
-def('send_whatsapp', 'أرسل رسالة واتساب لعميل (يعمل فقط إذا واتساب مفعّل من Meta).',
-  S({ phone: str('الرقم الدولي بدون +'), text: str('النص'), customer_id: int('عميل') }, ['phone', 'text']),
+def('send_whatsapp', 'أرسل رسالة واتساب من رقم السكرتير لأي شخص يطلبه المالك. الرقم يقبل 05xxxxxxxx أو 9665xxxxxxxx. النتيجة تقول إذا انرسلت فعلاً أو تنتظر موافقة — بلّغ المالك بالنتيجة كما هي.',
+  S({ phone: str('رقم الجوال'), text: str('النص'), customer_id: int('جهة اتصال (اختياري)') }, ['phone', 'text']),
   async (a) => guardedExternal('send_whatsapp', a, { text: a.text, purpose: `واتساب إلى ${a.phone}` }));
 
 def('plan_trip', 'ابدأ تخطيط رحلة/سفر (طيران، فندق). بعدها ابحث عن خيارات حقيقية واحفظها بـ save_trip_options.',

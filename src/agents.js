@@ -23,7 +23,7 @@ const AGENTS = {
 - جهات الاتصال: احفظ أي شخص يذكره مع علاقته وتفاصيله.
 - الوثائق المهمة: سجّل تواريخ انتهاء الجواز/الإقامة/الرخصة/الاستمارة/التأمين واشرح طريقة التجديد (أبشر، ناجز، توكلنا...).
 - المناسبات: سجّل أعياد الميلاد والذكريات واقترح هدايا مناسبة بروابط.`,
-    tools: [...SHARED, 'agenda', 'add_appointment', 'cancel_appointment', 'list_reminders', 'cancel_reminder', 'list_emails', 'send_email', 'save_contact', 'save_document', 'list_documents', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
+    tools: [...SHARED, 'agenda', 'add_appointment', 'cancel_appointment', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'google_calendar', 'send_email', 'send_whatsapp', 'save_contact', 'save_document', 'list_documents', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
   },
   travel: {
     name: 'وكيل السفر والحجوزات', icon: '✈️', web: true,
@@ -95,7 +95,9 @@ ${knowledge.map(k => `- [${k.kind}] ${k.text}`).join('\n') || '—'}
 </memory>
 <rules>
 - الوقت الآن: ${U.riyadhNow()}. الأوقات بتوقيت الرياض بصيغة YYYY-MM-DD HH:mm. التواريخ ميلادية (حوّل الهجري للميلادي إذا ذكره المالك).
-- نفّذ فعلياً بالأدوات. لا تقل "سأفعل" بدون تنفيذ، ولا تدّعي تنفيذ شيء لم يحدث.
+- نفّذ فعلياً بالأدوات. لا تقل "سأفعل" بدون تنفيذ.
+- **الصدق في التنفيذ:** لا تقل "انرسل/انحجز/انحفظ" إلا إذا رجعت الأداة نتيجة نجاح فعلاً في هذا الرد. إذا رجعت "ينتظر موافقة" قلها كذا. إذا فشلت أو ما فيه أداة قل ذلك بوضوح. ممنوع تأليف نتيجة.
+- **رد على آخر رسالة فقط.** الرسائل السابقة سياق؛ لا تعيد تقرير مهام قديمة ولا تنفذها من جديد إلا إذا طلبها المالك الحين.
 - أي معلومة شخصية مفيدة يذكرها المالك (تفضيل، شخص، تاريخ مهم) احفظها بـ remember أو الأداة المناسبة.
 - لا تخترع أسعاراً أو مواعيد أو معلومات؛ ابحث أو اسأل سؤالاً واحداً واضحاً.
 - ممنوع نهائياً: الدفع أو التحويل أو الشراء الفعلي، طلب أو حفظ كلمات السر أو أرقام البطاقات أو رموز التحقق OTP أو أرقام الهوية/الجواز. الدفع دائماً من المالك عبر الرابط.
@@ -165,6 +167,7 @@ async function runManager(text, { attachments = [], channel = 'dashboard', progr
 3. تحقّق من النتيجة قبل ما ترد.
 4. رد بتقرير واضح: ✅ وش انعمل (بالأرقام والروابط)، ⏳ وش ينتظر، ❓ وش يحتاج قرار منه.
 الفريق: ${Object.values(AGENTS).map(a => `${a.icon} ${a.name}`).join('، ')}.
+الإيميل والتقويم: لقراءة إيميلات المالك استخدم gmail_search (لحظي من Gmail) ثم gmail_read للتفاصيل، ولتقويم Google استخدم google_calendar.
 المرفقات: صورة فاتورة/إيصال ← سجّلها مصروف. صورة رسالة بنك ← record_bank_message. صورة بطاقة/رقم ← جهة اتصال. صورة وثيقة (جواز/رخصة/استمارة) ← سجّل اسمها وتاريخ انتهائها فقط بدون أرقامها. مستند/PDF ← لخصه ونفّذ المطلوب. صورة منتج ← ابحث عنه وقارن أسعاره.
 
 ${await companyContext()}`;
