@@ -129,6 +129,28 @@ async function evoQR() {
   const r = await evo('GET', `/instance/connect/${C.EVOLUTION_INSTANCE}`);
   return { base64: r.base64 || (r.qrcode && r.qrcode.base64) || null, code: r.code || (r.qrcode && r.qrcode.code) || null, pairingCode: r.pairingCode || null };
 }
+// ربط برقم الجوال بدل QR: يرجع كود ٨ خانات يُكتب في واتساب ← الأجهزة المرتبطة ← الربط برقم الهاتف
+function saNumber(n) {
+  let d = String(n || '').replace(/\D/g, '');
+  if (d.startsWith('00')) d = d.slice(2);
+  if (/^05\d{8}$/.test(d)) d = '966' + d.slice(1);
+  if (/^5\d{8}$/.test(d)) d = '966' + d;
+  return d;
+}
+async function evoPair(number) {
+  const num = saNumber(number);
+  if (!/^\d{10,15}$/.test(num)) throw new Error('رقم غير صحيح. اكتبه مثل 05xxxxxxxx أو 9665xxxxxxxx');
+  const get = () => evo('GET', `/instance/connect/${C.EVOLUTION_INSTANCE}?number=${num}`);
+  let r = await get();
+  if (!r.pairingCode) { // جلسة QR قديمة شغالة: نصفّرها ونطلب من جديد
+    await evo('DELETE', `/instance/logout/${C.EVOLUTION_INSTANCE}`).catch(() => {});
+    await new Promise(ok => setTimeout(ok, 2500));
+    r = await get();
+  }
+  if (!r.pairingCode) throw new Error('ما رجع كود ربط من واتساب، جرب بعد دقيقة');
+  const code = String(r.pairingCode).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  return { number: num, code: code.length === 8 ? code.slice(0, 4) + '-' + code.slice(4) : code };
+}
 async function evoLogout() { return evo('DELETE', `/instance/logout/${C.EVOLUTION_INSTANCE}`); }
 
 // إرسال واتساب: Evolution إذا مفعّل، وإلا واجهة Meta الرسمية
@@ -205,4 +227,4 @@ async function notifyMember(member, text, opts = {}) {
   return false;
 }
 
-module.exports = { evo, evoEnabled, evoSecret, evoStatus, evoQR, evoLogout, setupEvolution, waNumber, TG_BASE, tg, tgSend, tgSecret, tgEnabled, ownerTelegramId, setupTelegramWebhook, sendWhatsApp, n8n, n8nReady, sendEmail, notifyOwner, notifyMember };
+module.exports = { evo, evoEnabled, evoSecret, evoStatus, evoQR, evoPair, saNumber, evoLogout, setupEvolution, waNumber, TG_BASE, tg, tgSend, tgSecret, tgEnabled, ownerTelegramId, setupTelegramWebhook, sendWhatsApp, n8n, n8nReady, sendEmail, notifyOwner, notifyMember };

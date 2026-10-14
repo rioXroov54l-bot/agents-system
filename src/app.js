@@ -282,6 +282,7 @@ app.get('/api/settings', wrap(async (_req, res) => {
 }));
 app.get('/api/whatsapp', wrap(async (_req, res) => res.json({ ...(await ch.evoStatus()), owner_phone: C.OWNER_PHONE ? '…' + C.OWNER_PHONE.slice(-4) : null }))); 
 app.get('/api/whatsapp/qr', wrap(async (_req, res) => res.json(await ch.evoQR())));
+app.post('/api/whatsapp/pair', wrap(async (req, res) => res.json(await ch.evoPair((req.body || {}).number))));
 app.post('/api/whatsapp/logout', wrap(async (_req, res) => { await ch.evoLogout(); res.json({ message: 'انفصل الرقم' }); }));
 
 // ---------- نقل لسيرفر جديد: كود مؤقت + تصدير كامل ----------
