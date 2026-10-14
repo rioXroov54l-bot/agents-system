@@ -69,9 +69,15 @@ async function handleEvolution(body) {
     if (msg.key.fromMe || /@g\.us$|@broadcast$|@newsletter$/.test(jid)) continue;
     if (seen.has(msg.key.id)) continue;
     seen.add(msg.key.id); if (seen.size > 5000) seen.clear();
-    const num = ch.waNumber(msg.key.senderPn || jid);
+    // واتساب الجديد قد يرسل المعرف بصيغة @lid، فنأخذ الرقم الحقيقي من الحقول البديلة
+    const pn = [msg.key.senderPn, msg.key.remoteJidAlt, msg.key.participantPn, msg.senderPn].find(x => x && /@s\.whatsapp\.net$|^\d+$/.test(x));
+    const num = ch.waNumber(pn || jid);
     const parsed = extract(msg);
     if (isOwner(num)) { handleOwner(num, parsed).catch(e => console.error('wa owner', e.message)); continue; }
+    if (!(await db.getSettings()).reply_others) { // الوضع الافتراضي: السكرتير يرد عليك أنت بس
+      db.log('whatsapp', `تجاهلت رسالة من ${msg.pushName || ''} (…${num.slice(-4)})`).catch(() => {});
+      continue;
+    }
     if (!parsed.text) {
       if (parsed.voice) ch.sendWhatsApp(num, 'هلا 👋 وصلت رسالتك الصوتية، ممكن تكتبها نص؟').catch(() => {});
       continue;
