@@ -73,7 +73,7 @@ services:
     env_file: .env
     environment:
       PORT: "3000"
-      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/agents
+      DATABASE_URL: postgresql://postgres:${POSTGRES_PASSWORD}@postgres:5432/agents?sslmode=disable
       PUBLIC_URL: https://${APP_DOMAIN}
       INTERNAL_URL: http://agents:3000
       N8N_WEBHOOK_URL: http://n8n:5678/webhook/agents

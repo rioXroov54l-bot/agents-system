@@ -179,12 +179,22 @@ const DEFAULT_SETTINGS = {
 };
 
 // ---------- اتصال ----------
+// SSL فقط للقواعد الخارجية؛ الداخلية (Docker/Railway الداخلي/المحلي) بدون SSL
+function needsSsl(url) {
+  if (process.env.DB_SSL) return process.env.DB_SSL === 'true';
+  if (/sslmode=disable/.test(url)) return false;
+  if (/sslmode=(require|verify)/.test(url)) return true;
+  let host = '';
+  try { host = new URL(url).hostname; } catch { return false; }
+  if (!host || !host.includes('.') || /\.internal$|^localhost$|^127\.|^10\.|^192\.168\.|^172\.(1[6-9]|2\d|3[01])\./.test(host)) return false;
+  return true;
+}
 async function connect() {
   if (!C.DATABASE_URL) throw new Error('DATABASE_URL غير محدد');
   const { Pool } = require('pg');
   pool = new Pool({
     connectionString: C.DATABASE_URL,
-    ssl: /railway\.internal|localhost|127\.0\.0\.1|\/tmp/.test(C.DATABASE_URL) ? false : { rejectUnauthorized: false },
+    ssl: needsSsl(C.DATABASE_URL) ? { rejectUnauthorized: false } : false,
     max: 10
   });
   await pool.query(SCHEMA);
