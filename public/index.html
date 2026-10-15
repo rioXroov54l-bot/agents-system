@@ -371,6 +371,16 @@ async function settings(v) {
     <select id="n_ch" onchange="api('/api/settings',{notify_channel:this.value}).then(()=>toast('✅ انحفظ'))">
       ${[['auto','تلقائي (تيليجرام إذا مربوط، وإلا واتساب)'],['telegram','تيليجرام'],['whatsapp','واتساب'],['both','الاثنين']].map(([k,l]) => `<option value="${k}" ${(s.notify_channel||'auto')===k?'selected':''}>${l}</option>`).join('')}
     </select></div>
+  <div class="card" id="mcpcard"><h2>🔌 الخدمات المتصلة (قوة إضافية)</h2>
+    <div class="small" style="line-height:1.9">اربط سكرتيرك بتطبيقاتك عشان ينفذ فيها مباشرة. أمثلة:<br>
+    • <b>Zapier</b> (آلاف التطبيقات: Google Sheets، Trello، Slack، Notion، Excel...): افتح <a href="https://mcp.zapier.com" target="_blank" dir="ltr">mcp.zapier.com</a> ← New MCP Server ← اختر التطبيقات والأوامر ← انسخ رابط <b>Server URL</b> والصقه هنا (بدون رمز).<br>
+    • <b>GitHub</b> (مستودعاتك وملفاتك وIssues): الرابط <code dir="ltr">https://api.githubcopilot.com/mcp/</code> والرمز من <a href="https://github.com/settings/personal-access-tokens/new" target="_blank">GitHub ← Fine-grained token</a>.<br>
+    • أي خدمة تعطيك رابط MCP (يبدأ بـ https).</div>
+    <div id="mcplist" class="small" style="margin:8px 0">⏳</div>
+    <div class="grid two"><div class="field"><label>الاسم (بالإنجليزي)</label><input id="mcp_n" placeholder="zapier" dir="ltr"></div><div class="field"><label>الرابط</label><input id="mcp_u" placeholder="https://..." dir="ltr"></div></div>
+    <div class="field"><label>الرمز (Token) — إذا الخدمة تطلبه</label><input id="mcp_t" type="password" autocomplete="off" dir="ltr" placeholder="اختياري"></div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap"><button class="sm" onclick="mcpPreset('github')">تعبئة GitHub</button><button class="sm" onclick="mcpPreset('zapier')">تعبئة Zapier</button><button class="primary" onclick="mcpAdd()">ربط الخدمة</button></div>
+  </div>
   <div class="card"><h2>🎙️ سيري ورسائل البنك (اختصارات الآيفون)</h2>
     <div class="small" style="line-height:1.9">رابطك الخاص (لا تشاركه مع أحد):<br><code id="hook">${esc(o.status.shortcut_url)}</code>
     <div style="margin:6px 0"><button class="sm" onclick="navigator.clipboard.writeText($('#hook').textContent);toast('انسخ ✓')">نسخ</button> <button class="sm danger" onclick="rotateHook()">تغيير الرابط</button></div>
@@ -381,6 +391,33 @@ async function settings(v) {
     <button class="sm" onclick="api('/api/admin/migrate-code',{}).then(r=>{$('#mcode').innerHTML='الكود: <code>'+r.code+'</code>'})">إنشاء كود نقل</button> <span id="mcode" class="small"></span></div>
   <div class="card small" style="line-height:1.9">🔒 <b>للأمان:</b> السكرتير ما يدفع ولا يحوّل ولا يحفظ كلمات سر أو أرقام بطاقات أو رموز OTP. الدفع دائماً منك عبر الروابط اللي يجهزها لك.</div>`;
   loadWA(); clearInterval(waTimer); waTimer = setInterval(loadWA, 20000);
+  loadMCP();
+}
+async function loadMCP() {
+  const box = $('#mcplist'); if (!box) return;
+  const l = await api('/api/mcp').catch(() => []);
+  box.innerHTML = l.length ? l.map(m => `<div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap;padding:6px 0;border-bottom:1px solid rgba(255,255,255,.08)">
+      <b>${m.enabled ? '🟢' : '⚪'} ${esc(m.label || m.name)}</b> <span dir="ltr" style="opacity:.7">${esc(m.url)}</span>
+      <button class="sm" onclick="mcpTest('${esc(m.name)}',this)">فحص</button>
+      <button class="sm" onclick="api('/api/mcp',{toggle:'${esc(m.name)}'}).then(loadMCP)">${m.enabled ? 'إيقاف' : 'تشغيل'}</button>
+      <button class="sm danger" onclick="if(confirm('تشيل ${esc(m.name)}؟'))api('/api/mcp',{remove:'${esc(m.name)}'}).then(loadMCP)">حذف</button></div>`).join('') : 'ما فيه خدمات مربوطة للحين.';
+}
+function mcpPreset(k) {
+  if (k === 'github') { $('#mcp_n').value = 'github'; $('#mcp_u').value = 'https://api.githubcopilot.com/mcp/'; $('#mcp_t').focus(); }
+  if (k === 'zapier') { $('#mcp_n').value = 'zapier'; $('#mcp_u').value = ''; $('#mcp_u').placeholder = 'https://mcp.zapier.com/api/mcp/s/.../mcp'; $('#mcp_u').focus(); }
+}
+const mcpMsg = t => t ? (t.ok ? `✅ متصل — ${t.tools} أداة جاهزة` : '⚠️ ' + t.error) : '✅ انحفظ';
+async function mcpAdd() {
+  const name = $('#mcp_n').value.trim(), url = $('#mcp_u').value.trim(), token = $('#mcp_t').value.trim();
+  if (!name || !url) return toast('اكتب الاسم والرابط');
+  if (!/^https:\/\//.test(url)) return toast('الرابط لازم يبدأ بـ https://');
+  try { const r = await api('/api/mcp', { name, url, token: token || undefined, label: name }); toast(mcpMsg(r.test)); $('#mcp_n').value = $('#mcp_u').value = $('#mcp_t').value = ''; loadMCP(); }
+  catch (e) { toast('⚠️ ' + e.message); }
+}
+async function mcpTest(name, b) {
+  if (b) { b.disabled = true; b.textContent = 'لحظة…'; }
+  const r = await api('/api/mcp/test', { name }).catch(e => ({ ok: false, error: e.message }));
+  toast(mcpMsg(r)); if (b) { b.disabled = false; b.textContent = 'فحص'; }
 }
 let waTimer = null;
 let waPair = null; // كود الربط الحالي: نوقف تحديث QR عشان ما ينلغي

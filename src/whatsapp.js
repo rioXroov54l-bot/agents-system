@@ -23,19 +23,32 @@ function extract(msg) {
   let attachment = null, kind = msg.messageType || Object.keys(m)[0] || 'unknown';
   if (m.imageMessage && b64) attachment = { type: 'image', source: { type: 'base64', media_type: /png/.test(m.imageMessage.mimetype || '') ? 'image/png' : 'image/jpeg', data: b64 } };
   const doc = m.documentMessage || (m.documentWithCaptionMessage && m.documentWithCaptionMessage.message && m.documentWithCaptionMessage.message.documentMessage);
+  let file = null;
   if (doc && b64 && /pdf/.test(doc.mimetype || '')) attachment = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } };
+  else if (doc && b64 && /^image\/(jpeg|png|webp|gif)$/.test(doc.mimetype || '')) attachment = { type: 'image', source: { type: 'base64', media_type: doc.mimetype, data: b64 } };
+  else if (doc && b64) file = { data: b64, name: doc.fileName || doc.title || 'file', mime: doc.mimetype || '' };
   const au = m.audioMessage || m.pttMessage;
   const voice = !!au;
   const audio = au && b64 ? { data: b64, mime: au.mimetype || 'audio/ogg' } : null;
-  return { text: String(text).trim(), attachment, voice, audio, kind };
+  return { text: String(text).trim(), attachment, file, doc: !!doc, voice, audio, kind };
 }
 
 async function typing(num) {
   ch.evo('POST', `/chat/sendPresence/${C.EVOLUTION_INSTANCE}`, { number: num, presence: 'composing', delay: 3000 }).catch(() => {});
 }
 
-async function handleOwner(num, { text, attachment, voice, audio }) {
+async function handleOwner(num, { text, attachment, file, doc, voice, audio }) {
   const reply = t => ch.sendWhatsApp(num, t);
+  if (doc && !attachment && !file) return reply('📎 ما وصلني الملف كامل، أرسله مرة ثانية.');
+  if (file) {
+    // Excel / Word / PowerPoint / CSV... ← حاوية التحليل
+    try {
+      const buf = Buffer.from(file.data, 'base64');
+      if (buf.length > 19e6) return reply('الملف كبير جداً (الحد 19MB)');
+      const fid = await require('./power').ownerUpload(buf, file.name, file.mime);
+      text = `${text || 'حلل هذا الملف وعطني أهم ما فيه'}\n\n[ملف مرفق من المالك: ${file.name} — file_id: ${fid}] (فوّض لوكيل الملفات والتحليل builder مع file_ids)`;
+    } catch (e) { return reply('⚠️ ما قدرت أستلم الملف: ' + e.message.slice(0, 150)); }
+  }
   if (voice && !text) {
     if (!audio) return reply('🎙️ ما وصلني الصوت كامل، أرسله مرة ثانية أو اكتبه.');
     typing(num);
@@ -116,7 +129,7 @@ async function handleEvolution(body) {
     if (watched || (!st.reply_others && st.forward_others !== false)) {
       let heard = '';
       if (!parsed.text && parsed.audio) heard = await require('./voice').transcribe(parsed.audio.data, parsed.audio.mime).catch(() => '');
-      const what = parsed.text || (heard ? `🎙️ (رسالة صوتية) «${heard}»` : parsed.attachment ? (parsed.attachment.type === 'image' ? '[صورة]' : '[مستند]') : parsed.voice ? '[رسالة صوتية]' : `[${parsed.kind}]`);
+      const what = parsed.text || (heard ? `🎙️ (رسالة صوتية) «${heard}»` : parsed.attachment ? (parsed.attachment.type === 'image' ? '[صورة]' : '[مستند]') : parsed.file ? `[ملف: ${parsed.file.name}]` : parsed.voice ? '[رسالة صوتية]' : `[${parsed.kind}]`);
       const who = msg.pushName || (watched && watched.name) || num;
       const note = watched
         ? `📩 **رد من ${who}** (${num})${watched.note ? '\n📝 ' + watched.note : ''}\n\n${what}`

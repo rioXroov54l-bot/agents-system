@@ -95,6 +95,8 @@ async function tick() {
     // 4) مرة يومياً 9 الصبح: الفواتير، الوثائق، المناسبات
     if (hour >= 9 && await onceToday('daily_checks')) {
       await db.dailyBackup().catch(e => console.error('backup', e.message));
+      // الملفات الجاهزة تنحفظ 6 شهور
+      await db.q("DELETE FROM files WHERE created_at < now() - interval '180 days'").catch(() => {});
       // الأدوية، الصيانة، الضمانات، التواصل مع الناس
       await require('./life').daily().catch(e => console.error('life daily', e.message));
       // الفواتير: قبل 3 أيام ويوم الاستحقاق والمتأخرة

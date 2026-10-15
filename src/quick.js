@@ -222,9 +222,14 @@ async function routines() {
 }
 
 async function docs() {
-  const rs = await db.many('SELECT id, kind, title, token, created_at FROM reports ORDER BY id DESC LIMIT 12').catch(() => []);
-  if (!rs.length) return '📄 ما جهزت لك مستندات للحين.\n\n💬 «سوّ لي تقرير عن ...» أو «اكتب لي خطاب ...»';
-  return '📄 **ملفاتك ومستنداتك**\n\n' + rs.map(r => `• **${r.title}** (${U.fmt(r.created_at).slice(0, 10)})\n${C.PUBLIC_URL}/r/${r.token}`).join('\n\n');
+  const [rs, fs] = await Promise.all([
+    db.many('SELECT id, kind, title, token, created_at FROM reports ORDER BY id DESC LIMIT 10').catch(() => []),
+    db.many("SELECT name, token, created_at FROM files WHERE source='agent' AND data IS NOT NULL ORDER BY id DESC LIMIT 10").catch(() => [])]);
+  if (!rs.length && !fs.length) return '📄 ما جهزت لك مستندات للحين.\n\n💬 «سوّ لي تقرير عن ...» أو «سوّ لي ملف Excel لـ ...» أو «سوّ عرض بوربوينت عن ...»';
+  const L = [];
+  if (fs.length) L.push('📎 **الملفات (Excel / PowerPoint / Word / PDF)**\n\n' + fs.map(f => `• **${f.name}** (${U.fmt(f.created_at).slice(0, 10)})\n${C.PUBLIC_URL}/f/${f.token}`).join('\n\n'));
+  if (rs.length) L.push('📄 **التقارير والمستندات**\n\n' + rs.map(r => `• **${r.title}** (${U.fmt(r.created_at).slice(0, 10)})\n${C.PUBLIC_URL}/r/${r.token}`).join('\n\n'));
+  return L.join('\n\n');
 }
 async function meds() {
   const ms = await T().list_medications.handler({}).catch(() => []);

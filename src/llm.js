@@ -1,18 +1,27 @@
 // محرك Claude: استدعاء مع أدوات + حلقة تنفيذ حتى ينتهي الوكيل
 const C = require('./config');
 
-async function callClaude({ system, messages, tools, model = C.MODEL, maxTokens = 4096, toolChoice }) {
+async function callClaude({ system, messages, tools, model = C.MODEL, maxTokens = 4096, toolChoice, container, mcpServers, betas = [] }) {
   const body = { model, max_tokens: maxTokens, messages };
   if (toolChoice) body.tool_choice = toolChoice;
+  if (container) body.container = container;
+  const headers = { 'x-api-key': C.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' };
   if (system) body.system = [{ type: 'text', text: system, cache_control: { type: 'ephemeral' } }];
   if (tools && tools.length) {
     body.tools = tools.map((t, i) => (i === tools.length - 1 ? { ...t, cache_control: { type: 'ephemeral' } } : t));
   }
+  // خدمات خارجية (MCP): تنضاف بعد نقطة الكاش عشان ما تكسرها
+  if (mcpServers && mcpServers.length) {
+    body.mcp_servers = mcpServers.map(m => ({ type: 'url', url: m.url, name: m.name, ...(m.token ? { authorization_token: m.token } : {}) }));
+    body.tools = [...(body.tools || []), ...mcpServers.map(m => ({ type: 'mcp_toolset', mcp_server_name: m.name }))];
+    betas = [...betas, 'mcp-client-2025-11-20'];
+  }
+  if (betas.length) headers['anthropic-beta'] = [...new Set(betas)].join(',');
   let lastErr;
   for (let attempt = 0; attempt < 3; attempt++) {
     const res = await fetch((process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', {
       method: 'POST',
-      headers: { 'x-api-key': C.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
+      headers,
       body: JSON.stringify(body),
       signal: AbortSignal.timeout(300000)
     });
@@ -26,6 +35,7 @@ async function callClaude({ system, messages, tools, model = C.MODEL, maxTokens 
 }
 
 const AGENT_MAX_TOKENS = Number(process.env.AGENT_MAX_TOKENS || 16000);
+const CODE_EXEC_STABLE = 'code_execution_20250825';
 const textOf = content => (content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
 
 // استدعاء بسيط بدون أدوات (نص فقط)
@@ -42,22 +52,49 @@ function parseJson(text) {
  * يشغّل وكيل بأدوات حتى ينتهي.
  * tools: [{name, description, input_schema, handler(input, ctx)}] أو أدوات خادم (type: web_search_...)
  */
-async function runAgent({ system, input, history = [], tools = [], model = C.MODEL, maxSteps = 16, ctx = {}, onStep }) {
+// ملفات أنتجها تنفيذ الكود (Excel/PowerPoint/Word/PDF/صور...) داخل حاوية Anthropic
+function filesOf(content) {
+  const ids = [];
+  for (const b of content || []) {
+    if (b.type === 'bash_code_execution_tool_result' && b.content && b.content.type === 'bash_code_execution_result')
+      for (const o of b.content.content || []) if (o.file_id) ids.push(o.file_id);
+    if (b.type === 'code_execution_tool_result' && b.content && Array.isArray(b.content.content))
+      for (const o of b.content.content) if (o.file_id) ids.push(o.file_id);
+  }
+  return ids;
+}
+
+async function runAgent({ system, input, history = [], tools = [], model = C.MODEL, maxSteps = 16, ctx = {}, onStep, skills, mcpServers }) {
   const clientTools = tools.filter(t => t.handler);
   const byName = Object.fromEntries(clientTools.map(t => [t.name, t]));
-  const apiTools = tools.map(t => t.handler ? { name: t.name, description: t.description, input_schema: t.input_schema } : t.spec);
+  let apiTools = tools.map(t => t.handler ? { name: t.name, description: t.description, input_schema: t.input_schema } : t.spec);
   const messages = [...history, { role: 'user', content: input }];
-  const steps = [];
-  let usage = { in: 0, out: 0 };
+  const steps = [], files = [];
+  let usage = { in: 0, out: 0 }, containerId = null;
+  let mcp = mcpServers && mcpServers.length ? mcpServers : null, betas = [];
+  const call = async (extra = {}) => {
+    const container = skills && skills.length ? { ...(containerId ? { id: containerId } : {}), skills: skills.map(id => ({ type: 'anthropic', skill_id: id, version: 'latest' })) } : (containerId || undefined);
+    try { return await callClaude({ system, messages, tools: apiTools, model, maxTokens: AGENT_MAX_TOKENS, container, mcpServers: mcp, betas, ...extra }); }
+    catch (e) { // خدمة MCP خارجية معطلة: نكمل بدونها بدل ما يفشل الطلب كله
+      if (mcp && /mcp/i.test(e.message)) { console.error('mcp off:', e.message.slice(0, 200)); mcp = null; steps.push({ tool: 'mcp', ok: false, result: 'تعذر الاتصال بخدمة خارجية' }); return call(extra); }
+      // نسخة أداة تشغيل الكود غير مدعومة: نرجع للنسخة المستقرة
+      const ce = apiTools.find(t => t && t.type && /^code_execution_/.test(t.type) && t.type !== CODE_EXEC_STABLE);
+      if (ce && /code_execution|tool|type/i.test(e.message) && / 400/.test(e.message)) { console.error('code exec fallback:', e.message.slice(0, 200)); apiTools = apiTools.map(t => t === ce ? { ...t, type: CODE_EXEC_STABLE } : t); betas = ['code-execution-2025-08-25', 'skills-2025-10-02', 'files-api-2025-04-14']; return call(extra); }
+      throw e;
+    }
+  };
 
   for (let i = 0; i < maxSteps; i++) {
-    const data = await callClaude({ system, messages, tools: apiTools, model, maxTokens: AGENT_MAX_TOKENS });
+    const data = await call();
+    if (data.container && data.container.id) containerId = data.container.id;
+    files.push(...filesOf(data.content));
     usage.in += (data.usage?.input_tokens || 0) + (data.usage?.cache_read_input_tokens || 0);
     usage.out += data.usage?.output_tokens || 0;
     messages.push({ role: 'assistant', content: data.content });
 
     for (const b of data.content || []) {
       if (b.type === 'server_tool_use') steps.push({ tool: b.name, input: b.input });
+      if (b.type === 'mcp_tool_use') steps.push({ tool: (b.server_name || 'mcp') + ':' + b.name, input: b.input });
     }
 
     if (data.stop_reason === 'pause_turn') continue;
@@ -73,11 +110,11 @@ async function runAgent({ system, input, history = [], tools = [], model = C.MOD
       let text = textOf(data.content);
       if (!String(text || '').trim()) { // أحياناً ينهي بدون نص: نطلب الرد النهائي صراحة
         messages.push({ role: 'user', content: 'اكتب الحين ردك النهائي للمالك (وش انعمل وش الخطوة الجاية) بدون أدوات.' });
-        const fin = await callClaude({ system, messages, tools: apiTools, model, maxTokens: AGENT_MAX_TOKENS, toolChoice: { type: 'none' } }).catch(() => null);
+        const fin = await call({ toolChoice: { type: 'none' } }).catch(() => null);
         text = fin ? textOf(fin.content) : '';
       }
-      if (!String(text || '').trim()) text = fallbackText(steps);
-      return { text, steps, usage };
+      if (!String(text || '').trim()) text = files.length ? '✅ جهزت الملفات المطلوبة' : fallbackText(steps);
+      return { text, steps, usage, files: [...new Set(files)] };
     }
 
     const results = [];
@@ -100,9 +137,10 @@ async function runAgent({ system, input, history = [], tools = [], model = C.MOD
   }
   // تجاوز الحد: نطلب خلاصة نهائية
   messages.push({ role: 'user', content: 'توقف عن استخدام الأدوات الآن واكتب خلاصة ما أنجزته وما بقي.' });
-  const final = await callClaude({ system, messages, tools: apiTools, model, maxTokens: AGENT_MAX_TOKENS, toolChoice: { type: 'none' } }).catch(() => null);
+  const final = await call({ toolChoice: { type: 'none' } }).catch(() => null);
+  if (final) files.push(...filesOf(final.content));
   const text = final ? textOf(final.content) : '';
-  return { text: String(text || '').trim() ? text : fallbackText(steps), steps, usage };
+  return { text: String(text || '').trim() ? text : fallbackText(steps), steps, usage, files: [...new Set(files)] };
 }
 
 // لو ما رجع نص أبداً: نلخص وش انعمل من الأدوات بدل رد فاضي
@@ -111,4 +149,4 @@ function fallbackText(steps) {
   return done.length ? '✅ تم:\n' + done.join('\n') : 'تمام 👍 وش تبيني أسوي بالضبط؟';
 }
 
-module.exports = { callClaude, ask, runAgent, parseJson, textOf };
+module.exports = { callClaude, ask, runAgent, parseJson, textOf, filesOf };

@@ -92,6 +92,17 @@ const AGENTS = {
 - احفظ البحث المهم بـ save_research.`,
     tools: [...SHARED, 'save_research', 'list_research', 'publish_document', 'currency_convert', 'market_quote']
   },
+  builder: {
+    name: 'وكيل الملفات والتحليل', icon: '🛠️', web: true, steps: 30, codeExec: true, skills: ['xlsx', 'pptx', 'docx', 'pdf'],
+    role: `أنت منفّذ تقني محترف عندك حاوية تشغيل كود (Python/Bash) ومهارات إنشاء ملفات Excel وPowerPoint وWord وPDF.
+- تسوي أي شي يحتاج حساب أو ملف: جداول Excel بمعادلات وتنسيق ورسوم بيانية، عروض PowerPoint احترافية، مستندات Word، PDF، تحليل بيانات وملفات المالك، رسوم بيانية (PNG)، تحويل بين الصيغ، حسابات مالية وقروض وأقساط، جداول زمنية وخطط.
+- الملفات النهائية احفظها في مجلد العمل بأسماء واضحة بالإنجليزي مثل budget_2026.xlsx (توصل للمالك تلقائياً). لا تسوي نسخ كثيرة أو ملفات مؤقتة بامتدادات مستندات.
+- العربي: اجعل الملفات RTL وبخط يدعم العربي، والعناوين واضحة. اعمل ملف واحد متكامل أفضل من عدة ملفات.
+- ملفات المالك المرفقة موجودة في الحاوية — حللها بدقة وأعط أرقام حقيقية منها.
+- الحاوية بدون إنترنت؛ إذا تحتاج معلومات حديثة ابحث أولاً بأداة البحث ثم استخدمها في الملف.
+- في ردك: سطرين وش سويت وأهم نتيجة/رقم (الملفات توصل المالك تلقائياً).`,
+    tools: [...SHARED, 'publish_document', 'list_files']
+  },
   gov: {
     name: 'وكيل المعاملات الحكومية', icon: '🏛️', web: true, steps: 28,
     role: `أنت خبير معاملات حكومية سعودية (مثل معقّب محترف). تعرف المنصات: أبشر (أفراد/أعمال)، ناجز، توكلنا، نفاذ، مقيم، قوى، مدد، التأمينات GOSI، المرور، الجوازات، الأحوال المدنية، الزكاة والضريبة ZATCA، إيجار، بلدي، منصة سكني، صحتي، موعد، المركز السعودي للأعمال، منصة اعتماد، التعليم (نور، القبول الموحد)، الضمان الاجتماعي، حساب المواطن، السفارات والتأشيرات.
@@ -158,17 +169,24 @@ async function finishRun(run, result, status = 'done') {
 }
 
 // تشغيل وكيل متخصص
-async function runSpecialist(key, task, { input, onStep, byOwner = false, channel } = {}) {
+const CODE_EXEC = { spec: { type: 'code_execution_20260521', name: 'code_execution' } };
+async function runSpecialist(key, task, { input, onStep, byOwner = false, channel, fileIds = [] } = {}) {
   const a = AGENTS[key];
   if (!a) throw new Error('وكيل غير معروف: ' + key);
-  const tools = pick(...a.tools); if (a.web) tools.push(WEB_SEARCH);
+  const tools = pick(...a.tools); if (a.codeExec) tools.push(CODE_EXEC); if (a.web) tools.push(WEB_SEARCH);
+  if (a.codeExec && fileIds.length) input = [{ type: 'text', text: task }, ...fileIds.map(id => ({ type: 'container_upload', file_id: id }))];
   const system = `أنت "${a.name}" ضمن فريق السكرتارية الشخصية للمالك.\n${a.role}\n\n${await companyContext()}\n\nعند الانتهاء اكتب تقريراً مختصراً لما نفذته فعلاً مع الأرقام والروابط، وما يحتاج قرار المالك إن وجد.`;
   const run = await startRun(key, task);
   await db.log('agent', `${a.icon} ${a.name} بدأ: ${String(task).slice(0, 120)}`, key);
   try {
-    const result = await llm.runAgent({ system, input: input || task, tools, ctx: { agent: key, agentIcon: a.icon, byOwner, channel }, onStep, maxSteps: a.steps || 20 });
-    await finishRun(run, result);
-    return result.text;
+    const result = await llm.runAgent({ system, input: input || task, tools, ctx: { agent: key, agentIcon: a.icon, byOwner, channel }, onStep, maxSteps: a.steps || 20, skills: a.codeExec ? a.skills : undefined });
+    let text = result.text;
+    if (result.files && result.files.length) {
+      const got = await require('./power').deliver(result.files, channel);
+      if (got.length) text += '\n\n📎 **الملفات الجاهزة**' + (got.every(f => f.sent) ? ' (انرسلت للمالك كملفات)' : '') + ':\n' + got.map(f => `• ${f.name}: ${f.url}`).join('\n');
+    }
+    await finishRun(run, { ...result, text });
+    return text;
   } catch (e) {
     await finishRun(run, { text: e.message }, 'error');
     throw e;
@@ -180,10 +198,10 @@ const DELEGATE = {
   name: 'delegate',
   description: `فوّض مهمة كاملة لوكيل متخصص ينفذها بأدواته ويرجع تقريراً. استخدمه للشغل العميق: ${Object.entries(AGENTS).map(([k, a]) => `${k} = ${a.name}`).join('، ')}.
 اكتب المهمة بالتفصيل مع كل المعطيات (أسماء، أرقام، أرقام العملاء، مواعيد) لأن الوكيل لا يرى المحادثة. تقدر تفوّض لأكثر من وكيل بالتتابع.`,
-  input_schema: { type: 'object', properties: { agent: { type: 'string', enum: Object.keys(AGENTS) }, task: { type: 'string' } }, required: ['agent', 'task'] },
-  handler: async ({ agent, task }, ctx) => {
+  input_schema: { type: 'object', properties: { agent: { type: 'string', enum: Object.keys(AGENTS) }, task: { type: 'string' }, file_ids: { type: 'array', items: { type: 'string' }, description: 'معرفات ملفات المالك المرفقة (file_...) لوكيل الملفات والتحليل' } }, required: ['agent', 'task'] },
+  handler: async ({ agent, task, file_ids }, ctx) => {
     if (ctx.progress) await ctx.progress(`${AGENTS[agent].icon} ${AGENTS[agent].name} يشتغل...`);
-    return runSpecialist(agent, task, { byOwner: !!ctx.byOwner, channel: ctx.channel });
+    return runSpecialist(agent, task, { byOwner: !!ctx.byOwner, channel: ctx.channel, fileIds: file_ids || [] });
   }
 };
 
@@ -212,6 +230,7 @@ async function runManagerInner(text, { attachments = [], channel = 'dashboard', 
   const BUSINESS = ['find_customers', 'save_customer', 'customer_profile', 'log_interaction', 'list_products', 'save_product', 'list_deals', 'save_deal', 'create_quote', 'send_quote', 'list_quotes', 'update_quote_status', 'create_invoice', 'send_invoice', 'record_payment', 'list_invoices', 'finance_summary', 'save_content', 'list_content', 'business_overview'];
   const allTools = Object.values(T).filter(t => !BUSINESS.includes(t.name));
   const tools = [DELEGATE, ...allTools, WEB_SEARCH];
+  const mcp = await require('./power').mcpServers().catch(() => []);
   const system = `أنت "المدير الشخصي" — اليد اليمنى للمالك ومدير فريق سكرتاريته الشخصية. تستقبل أي طلب صغير أو كبير في حياته وتضمن تنفيذه كاملاً وبالتفصيل.
 طريقتك:
 1. افهم المطلوب بعمق وفكّر وش ممكن يحتاج المالك أيضاً (لو قال "عندي سفر" فكّر في: الطيران، الفندق، التأشيرة، التذكيرات، الجواز صالح؟، مين يهتم بالبيت...). اقترح الإضافات المهمة بإيجاز.
@@ -226,6 +245,8 @@ async function runManagerInner(text, { attachments = [], channel = 'dashboard', 
 • تقويم Google كامل: google_calendar/calendar_add/calendar_edit/calendar_remove/calendar_free_time.
 • الطقس weather، مواقيت الصلاة prayer_times، التحويل الهجري convert_date، العملات currency_convert، والبحث في الإنترنت.
 • تذكيرات للمالك نفسه set_reminder (تنبيه على تيليجرام/واتساب).
+• **ملفات حقيقية وتحليل وكود**: Excel بمعادلات ورسوم، PowerPoint، Word، PDF، تحليل ملف أرسله المالك، حسابات معقدة، رسوم بيانية ← فوّض لـ builder (وكيل الملفات والتحليل). إذا فيه ملف مرفق من المالك مرر file_ids.
+• **خدمات خارجية متصلة (MCP)**: ${mcp.length ? 'متصل الآن: ' + mcp.map(m => m.label || m.name).join('، ') + ' — استخدم أدواتها مباشرة لتنفيذ طلبات المالك فيها (مثلاً GitHub: مستودعات/ملفات/Issues، Zapier: آلاف التطبيقات). أي تغيير مهم أو حذف في خدمة خارجية اشرح للمالك وش بتسوي قبل ما تنفذه.' : 'ما فيه خدمات متصلة حالياً؛ لو طلب المالك شي في تطبيق خارجي (GitHub، Notion، Trello...) قل له يربطه من لوحة التحكم ← الإعدادات ← الخدمات المتصلة.'}
 • **مستندات احترافية** publish_document: أي تقرير/دراسة/مقارنة/خطاب/سيرة ذاتية/دليل ← رابط أنيق يحفظ PDF. الطلبات الكبيرة فوّضها لوكيل البحث والتقارير.
 • **المعاملات الحكومية** (أبشر، ناجز، تجديد، تأشيرات...) فوّضها لوكيل المعاملات الحكومية. **الصحة** (أدوية بمواعيد، قراءات، تحاليل) لوكيل الصحة.
 • الممتلكات والصيانة والضمانات (add_asset/add_maintenance/log_maintenance)، التواصل مع الناس (keep_in_touch/contacted)، الأسواق والمحفظة (market_quote/portfolio_report/add_holding).
@@ -244,7 +265,7 @@ ${await companyContext()}`;
   await db.log('owner', String(text || '[مرفق]').slice(0, 120), 'manager');
   try {
     const result = await llm.runAgent({
-      system, input: content, history: isolated ? [] : await ownerHistory(), tools, maxSteps: 24,
+      system, input: content, history: isolated ? [] : await ownerHistory(), tools, maxSteps: 24, mcpServers: mcp,
       ctx: { agent: 'manager', agentIcon: '🧠', progress, byOwner: !isolated, channel }
     });
     await finishRun(run, result);

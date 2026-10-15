@@ -67,6 +67,10 @@ CREATE TABLE IF NOT EXISTS appointments (
   customer_id int, location text, notes text, gcal_id text, reminded boolean DEFAULT false,
   created_at timestamptz DEFAULT now());
 
+CREATE TABLE IF NOT EXISTS files (
+  id serial PRIMARY KEY, token text UNIQUE NOT NULL, name text NOT NULL, mime text, size int, data bytea,
+  anthropic_id text, source text DEFAULT 'agent', created_at timestamptz DEFAULT now());
+
 CREATE TABLE IF NOT EXISTS price_watches (
   id serial PRIMARY KEY, url text NOT NULL, label text NOT NULL, title text, target_price numeric, every_minutes int DEFAULT 60,
   last_check timestamptz, last_price numeric, last_available boolean, currency text, fails int DEFAULT 0, last_error text,

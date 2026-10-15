@@ -111,7 +111,7 @@ async function handleUpdate(u) {
     if (pr) return ch.tgSend(chatId, pr);
   }
 
-  // مرفقات: صور ومستندات PDF
+  // مرفقات: صور وPDF (يقرأها مباشرة) وأي ملف ثاني (Excel/Word/CSV...) للتحليل
   const attachments = [];
   try {
     if (m.photo && m.photo.length) {
@@ -125,7 +125,15 @@ async function handleUpdate(u) {
         attachments.push(mime === 'application/pdf'
           ? { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: f.data } }
           : { type: 'image', source: { type: 'base64', media_type: mime, data: f.data } });
-      } else return ch.tgSend(chatId, 'أقدر أقرأ الصور وملفات PDF فقط حالياً.');
+      } else {
+        // Excel / Word / PowerPoint / CSV / نص... ← نرفعه لحاوية التحليل
+        if (m.document.file_size > 19e6) return ch.tgSend(chatId, 'الملف كبير جداً (الحد 19MB)');
+        ch.tg('sendChatAction', { chat_id: chatId, action: 'upload_document' }).catch(() => {});
+        const f = await downloadFile(m.document.file_id);
+        const name = m.document.file_name || 'file';
+        const fid = await require('./power').ownerUpload(Buffer.from(f.data, 'base64'), name, mime);
+        text = `${text || 'حلل هذا الملف وعطني أهم ما فيه'}\n\n[ملف مرفق من المالك: ${name} — file_id: ${fid}] (فوّض لوكيل الملفات والتحليل builder مع file_ids)`;
+      }
     }
   } catch (e) { return ch.tgSend(chatId, '⚠️ ' + e.message); }
 

@@ -28,6 +28,15 @@ app.get('/privacy', (_req, res) => res.type('html').send(`<!doctype html><html l
 <h2>Privacy Policy</h2><p>We use messages customers send us solely to respond and serve them. We store name, contact number and message text for customer service. We do not sell or share data with third parties other than service providers required to operate the system (Meta, Google, Anthropic). To request deletion, message us on the same number.</p></body></html>`));
 
 // المستندات العامة (برابط سري)
+// ملفات جهزها السكرتير (Excel/PowerPoint/Word/PDF...) برابط سري
+app.get('/f/:token', async (req, res) => {
+  try {
+    const f = await require('./power').getFile(req.params.token);
+    if (!f || !f.data) return res.status(404).send('غير موجود');
+    res.set('X-Robots-Tag', 'noindex').set('Content-Type', f.mime || 'application/octet-stream')
+      .set('Content-Disposition', `${/^image\/|pdf/.test(f.mime || '') ? 'inline' : 'attachment'}; filename*=UTF-8''${encodeURIComponent(f.name)}`).send(f.data);
+  } catch (e) { res.status(500).send('خطأ'); }
+});
 // مستندات وتقارير السكرتير (رابط سري)
 app.get('/r/:token', async (req, res) => {
   try {
@@ -305,6 +314,27 @@ app.post('/api/whatsapp/owner', wrap(async (req, res) => {
   res.json({ message: '✅ انحفظ رقمك', owner_phone: '…' + num.slice(-4) });
 }));
 // بوت تيليجرام من اللوحة (بدل تعديل ملفات السيرفر)
+// خدمات خارجية (MCP)
+const maskUrl = u => { try { const x = new URL(u); return x.host + (x.pathname.length > 1 ? '/…' + x.pathname.slice(-4) : ''); } catch (_) { return '—'; } };
+app.get('/api/mcp', wrap(async (_req, res) => res.json(((await db.getSettings()).mcp_servers || []).map(m => ({ name: m.name, label: m.label, enabled: m.enabled !== false, url: maskUrl(m.url), token: m.token ? '••••' + String(m.token).slice(-4) : '' })))));
+app.post('/api/mcp/test', wrap(async (req, res) => {
+  const m = ((await db.getSettings()).mcp_servers || []).find(x => x.name === (req.body || {}).name);
+  if (!m) return res.status(404).json({ error: 'غير موجودة' });
+  res.json(await require('./power').mcpTest(m));
+}));
+app.post('/api/mcp', wrap(async (req, res) => {
+  const cur = (await db.getSettings()).mcp_servers || [];
+  const b = req.body || {};
+  let list;
+  if (b.remove) list = cur.filter(m => m.name !== b.remove);
+  else if (b.toggle) list = cur.map(m => m.name === b.toggle ? { ...m, enabled: m.enabled === false } : m);
+  else { if (!b.name || !b.url) return res.status(400).json({ error: 'لازم اسم ورابط' }); list = [...cur.filter(m => m.name !== String(b.name).toLowerCase()), { name: b.name, label: b.label || b.name, url: b.url, token: b.token, enabled: true }]; }
+  const P = require('./power');
+  const saved = await P.mcpSave(list);
+  await db.log('settings', '🔌 تحديث الخدمات المتصلة');
+  const added = !b.remove && !b.toggle ? saved.find(m => m.name === String(b.name).trim().toLowerCase().replace(/[^a-z0-9_-]/g, '-').slice(0, 40)) : null;
+  res.json({ ok: true, count: saved.length, test: added ? await P.mcpTest(added) : undefined });
+}));
 app.post('/api/telegram/token', wrap(async (req, res) => {
   const token = String((req.body || {}).token || '').trim();
   if (!/^\d{6,12}:[\w-]{30,}$/.test(token)) return res.status(400).json({ error: 'التوكن مو بالشكل الصحيح. انسخه كامل من BotFather (أرقام ثم : ثم حروف)' });
