@@ -67,6 +67,11 @@ CREATE TABLE IF NOT EXISTS appointments (
   customer_id int, location text, notes text, gcal_id text, reminded boolean DEFAULT false,
   created_at timestamptz DEFAULT now());
 
+CREATE TABLE IF NOT EXISTS purchases (
+  id serial PRIMARY KEY, kind text DEFAULT 'other', title text NOT NULL, vendor text, amount numeric, currency text DEFAULT 'SAR', link text,
+  details jsonb DEFAULT '{}', trip_id int, status text DEFAULT 'awaiting_payment', confirmation text, reminded_at timestamptz,
+  created_at timestamptz DEFAULT now(), paid_at timestamptz);
+
 CREATE TABLE IF NOT EXISTS scheduled_messages (
   id serial PRIMARY KEY, channel text NOT NULL DEFAULT 'whatsapp', recipient text NOT NULL, name text, subject text, text text NOT NULL,
   at timestamptz NOT NULL, repeat text DEFAULT 'none', status text DEFAULT 'pending', error text, sent_at timestamptz, created_at timestamptz DEFAULT now());

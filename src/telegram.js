@@ -90,6 +90,9 @@ async function handleUpdate(u) {
   if ((m2 = text.match(/^رفض\s+#?(\d+)$/))) return ch.tgSend(chatId, await decide(m2[1], false));
   if ((m2 = text.match(/^عدل\s+#?(\d+)\s+([\s\S]+)/))) return ch.tgSend(chatId, await decide(m2[1], true, m2[2]));
 
+  const payReply = await require('./pay').handleOwnerText(text).catch(e => '⚠️ ' + e.message);
+  if (payReply) return ch.tgSend(chatId, payReply);
+
   if (m.voice || m.audio || m.video_note) return ch.tgSend(chatId, '🎙️ الرسائل الصوتية ما أقدر أفهمها للحين. اكتبها لي نص (أو استخدم إملاء الكيبورد في الجوال).');
 
   // مرفقات: صور ومستندات PDF
@@ -127,6 +130,13 @@ async function handleCallback(cq) {
   const chatId = String(cq.message && cq.message.chat.id);
   const ownerId = await ch.ownerTelegramId();
   const [kind, id, action] = String(cq.data || '').split(':');
+  if (kind === 'pay') {
+    await ch.tg('answerCallbackQuery', { callback_query_id: cq.id }).catch(() => {});
+    if (chatId !== ownerId) return;
+    await ch.tg('editMessageReplyMarkup', { chat_id: chatId, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => {});
+    const P = require('./pay');
+    return ch.tgSend(chatId, action === 'paid' ? await P.markPaid(id) : await P.cancel(id));
+  }
   if (kind === 'mn') { // قائمة الأقسام: نعرض القسم بدون ما نشيل الأزرار
     await ch.tg('answerCallbackQuery', { callback_query_id: cq.id }).catch(() => {});
     if (chatId !== ownerId) return;

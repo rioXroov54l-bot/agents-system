@@ -42,6 +42,9 @@ async function tick() {
     const dow = U.riyadh().getUTCDay(); // 0 = الأحد
     const { T } = require('./tools');
 
+    // 0-أ) إيميلات تأكيد الدفع (كل 5 دقايق إذا فيه طلبات دفع مفتوحة)
+    await require('./pay').scanConfirmations().catch(e => console.error('pay scan', e.message));
+
     // 0) الرسائل المجدولة (واتساب/إيميل) في وقتها بالضبط
     for (const m of await db.many("SELECT * FROM scheduled_messages WHERE status='pending' AND at <= now() ORDER BY at LIMIT 20")) {
       const claimed = await db.one("UPDATE scheduled_messages SET status='sending' WHERE id=$1 AND status='pending' RETURNING id", [m.id]);

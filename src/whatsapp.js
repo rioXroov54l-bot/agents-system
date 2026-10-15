@@ -46,6 +46,8 @@ async function handleOwner(num, { text, attachment, voice }) {
   if ((m = t.match(/^(?:موافق|وافق)\s+#?(\d+)$/))) return reply(await decide(m[1], true));
   if ((m = t.match(/^رفض\s+#?(\d+)$/))) return reply(await decide(m[1], false));
   if ((m = t.match(/^عدل\s+#?(\d+)\s+([\s\S]+)/))) return reply(await decide(m[1], true, m[2]));
+  const payReply = t ? await require('./pay').handleOwnerText(t).catch(e => '⚠️ ' + e.message) : null;
+  if (payReply) return reply(payReply);
   if (!t && !attachment) return;
   typing(num);
   const timer = setInterval(() => typing(num), 8000);

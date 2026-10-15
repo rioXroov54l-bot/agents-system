@@ -7,6 +7,7 @@ const C = require('./config');
 const { T, executors, appendConversation, qaOutbound, createApproval } = require('./tools');
 
 require('./personal'); // يسجّل أدوات الحياة الشخصية
+require('./pay'); // الدفع بضغطة
 const personal = require('./personal');
 
 const WEB_SEARCH = { spec: { type: 'web_search_20250305', name: 'web_search', max_uses: 10, user_location: { type: 'approximate', country: 'SA', city: 'Riyadh', timezone: 'Asia/Riyadh' } } };
@@ -23,7 +24,7 @@ const AGENTS = {
 - جهات الاتصال: احفظ أي شخص يذكره مع علاقته وتفاصيله.
 - الوثائق المهمة: سجّل تواريخ انتهاء الجواز/الإقامة/الرخصة/الاستمارة/التأمين واشرح طريقة التجديد (أبشر، ناجز، توكلنا...).
 - المناسبات: سجّل أعياد الميلاد والذكريات واقترح هدايا مناسبة بروابط.`,
-    tools: [...SHARED, 'agenda', 'add_appointment', 'move_appointment', 'cancel_appointment', 'update_my_settings', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'gmail_send', 'gmail_reply', 'gmail_draft', 'gmail_manage', 'google_calendar', 'calendar_add', 'calendar_edit', 'calendar_remove', 'calendar_free_time', 'send_email', 'send_whatsapp', 'schedule_message', 'list_scheduled', 'cancel_scheduled', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'weather', 'prayer_times', 'convert_date', 'save_contact', 'save_document', 'list_documents', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
+    tools: [...SHARED, 'agenda', 'add_appointment', 'move_appointment', 'cancel_appointment', 'update_my_settings', 'prepare_payment', 'mark_paid', 'list_pending_payments', 'booking_links', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'gmail_send', 'gmail_reply', 'gmail_draft', 'gmail_manage', 'google_calendar', 'calendar_add', 'calendar_edit', 'calendar_remove', 'calendar_free_time', 'send_email', 'send_whatsapp', 'schedule_message', 'list_scheduled', 'cancel_scheduled', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'weather', 'prayer_times', 'convert_date', 'save_contact', 'save_document', 'list_documents', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
   },
   travel: {
     name: 'وكيل السفر والحجوزات', icon: '✈️', web: true,
@@ -31,9 +32,11 @@ const AGENTS = {
 - ابحث في الإنترنت عن خيارات حقيقية حالية: طيران (السعودية، ناس، طيران أديل، الخطوط الأجنبية)، فنادق، شقق، سيارات، مطاعم وأنشطة.
 - قارن: السعر، المدة، التوقفات، الأوقات، التقييم، القرب من الوجهة. اعرض أفضل 3 خيارات بجدول واضح مع روابط الحجز الرسمية (موقع الشركة، Google Flights، Booking، Almosafer، Airbnb).
 - اذكر: التأشيرة ومتطلباتها للمواطن السعودي، الطقس المتوقع، العملة، الشريحة/الإنترنت، نصائح مهمة.
-- احفظ الخيارات بـ save_trip_options. لا تدّعي أنك حجزت: المالك يدفع من الرابط. بعد ما يعطيك تفاصيل الحجز استخدم confirm_trip (يضيف للتقويم + تذكير تسجيل الوصول والتوجه للمطار + قائمة تجهيز).
+- احفظ الخيارات بـ save_trip_options. استخدم booking_links لروابط البحث بالتاريخ، والأفضل رابط الرحلة/الفندق المحدد من موقع الشركة.
+- **الدفع بضغطة:** لما يقول المالك «احجزها/احجز لي» أو يختار خيار، أو طلب منك تحجز مباشرة وكل المعطيات واضحة (الوجهة والتاريخ): اختر الأنسب واستدعِ prepare_payment بكل التفاصيل (flights بأوقاتها، hotel، السعر، الرابط). المالك يدفع بنفسه بضغطة، والنظام يثبت الباقي تلقائياً من إيميل التأكيد. لا تدّعي أنك دفعت أو حجزت.
+- إذا ناقص معلومة أساسية (التاريخ مثلاً) اسأل سؤال واحد مختصر، وافترض الباقي بذكاء: شخص واحد، اقتصادي، ذهاب فقط إذا ما ذكر عودة، أي وقت مناسب.
 - مطار المالك الافتراضي من ملفه الشخصي.`,
-    tools: [...SHARED, 'plan_trip', 'save_trip_options', 'confirm_trip', 'list_trips', 'add_appointment', 'agenda', 'list_documents', 'weather', 'currency_convert', 'convert_date', 'calendar_add', 'calendar_free_time', 'prayer_times']
+    tools: [...SHARED, 'plan_trip', 'save_trip_options', 'confirm_trip', 'list_trips', 'add_appointment', 'agenda', 'list_documents', 'weather', 'currency_convert', 'convert_date', 'calendar_add', 'calendar_free_time', 'prayer_times', 'booking_links', 'prepare_payment', 'mark_paid', 'list_pending_payments']
   },
   money: {
     name: 'وكيل المالية الشخصية', icon: '💰', web: true,
@@ -51,9 +54,10 @@ const AGENTS = {
 - قائمة المقاضي: أضف ورتب حسب القسم والمتجر.
 - أي منتج يبيه: ابحث وقارن الأسعار بين أمازون السعودية، نون، جرير، إكسترا، ساكو، والمتاجر الرسمية. اعرض أفضل 3 خيارات (السعر، التقييم، الضمان، التوصيل) مع روابط مباشرة. نبّه للعروض والكوبونات.
 - الطلبات (أكل، مقاضي، صيدلية): جهّز الطلب واقترح التطبيق المناسب (جاهز، هنقرستيشن، مرسول، نينجا، كيتا) مع الرابط. الدفع والتأكيد النهائي يكون من المالك.
+- لما يقرر المالك يشتري/يطلب شي محدد: استدعِ prepare_payment (kind=order أو food) بالمنتج والسعر والرابط المباشر — توصله بطاقة دفع بضغطة.
 - الخدمات: فنيين، ورش سيارات، صيانة، تنظيف، نقل عفش: ابحث عن مقدمي خدمة بتقييمات عالية في مدينته مع أرقامهم.
 - لا تدخل بيانات دفع ولا تدّعي إتمام شراء.`,
-    tools: [...SHARED, 'add_shopping', 'list_shopping', 'check_shopping', 'save_contact', 'add_expense', 'currency_convert']
+    tools: [...SHARED, 'add_shopping', 'list_shopping', 'check_shopping', 'save_contact', 'add_expense', 'currency_convert', 'prepare_payment', 'list_pending_payments']
   },
   writer: {
     name: 'وكيل الكتابة والتواصل', icon: '✍️', web: true,
@@ -100,7 +104,7 @@ ${knowledge.map(k => `- [${k.kind}] ${k.text}`).join('\n') || '—'}
 - **رد على آخر رسالة فقط.** الرسائل السابقة سياق؛ لا تعيد تقرير مهام قديمة ولا تنفذها من جديد إلا إذا طلبها المالك الحين.
 - أي معلومة شخصية مفيدة يذكرها المالك (تفضيل، شخص، تاريخ مهم) احفظها بـ remember أو الأداة المناسبة.
 - لا تخترع أسعاراً أو مواعيد أو معلومات؛ ابحث أو اسأل سؤالاً واحداً واضحاً.
-- ممنوع نهائياً: الدفع أو التحويل أو الشراء الفعلي، طلب أو حفظ كلمات السر أو أرقام البطاقات أو رموز التحقق OTP أو أرقام الهوية/الجواز. الدفع دائماً من المالك عبر الرابط.
+- ممنوع نهائياً: الدفع أو التحويل أو الشراء الفعلي بنفسك، طلب أو حفظ كلمات السر أو أرقام البطاقات أو رموز التحقق OTP أو أرقام الهوية/الجواز. الدفع دائماً من المالك بضغطة عبر prepare_payment.
 - اكتب بالعربي بلهجة سعودية مهذبة واحترافية، كأنك سكرتير تنفيذي خبير. **عريض** للعناوين والأرقام المهمة. الروابط كاملة.
 - **الأسلوب الاحترافي:**
   • ابدأ بسطر يلخص النتيجة (✅ تم / ⏳ جاري / ⚠️ يحتاج قرار).
@@ -123,7 +127,7 @@ async function finishRun(run, result, status = 'done') {
 }
 
 // تشغيل وكيل متخصص
-async function runSpecialist(key, task, { input, onStep, byOwner = false } = {}) {
+async function runSpecialist(key, task, { input, onStep, byOwner = false, channel } = {}) {
   const a = AGENTS[key];
   if (!a) throw new Error('وكيل غير معروف: ' + key);
   const tools = pick(...a.tools); if (a.web) tools.push(WEB_SEARCH);
@@ -131,7 +135,7 @@ async function runSpecialist(key, task, { input, onStep, byOwner = false } = {})
   const run = await startRun(key, task);
   await db.log('agent', `${a.icon} ${a.name} بدأ: ${String(task).slice(0, 120)}`, key);
   try {
-    const result = await llm.runAgent({ system, input: input || task, tools, ctx: { agent: key, agentIcon: a.icon, byOwner }, onStep, maxSteps: 20 });
+    const result = await llm.runAgent({ system, input: input || task, tools, ctx: { agent: key, agentIcon: a.icon, byOwner, channel }, onStep, maxSteps: 20 });
     await finishRun(run, result);
     return result.text;
   } catch (e) {
@@ -148,7 +152,7 @@ const DELEGATE = {
   input_schema: { type: 'object', properties: { agent: { type: 'string', enum: Object.keys(AGENTS) }, task: { type: 'string' } }, required: ['agent', 'task'] },
   handler: async ({ agent, task }, ctx) => {
     if (ctx.progress) await ctx.progress(`${AGENTS[agent].icon} ${AGENTS[agent].name} يشتغل...`);
-    return runSpecialist(agent, task, { byOwner: !!ctx.byOwner });
+    return runSpecialist(agent, task, { byOwner: !!ctx.byOwner, channel: ctx.channel });
   }
 };
 
@@ -183,6 +187,7 @@ async function runManager(text, { attachments = [], channel = 'dashboard', progr
 • تقويم Google كامل: google_calendar/calendar_add/calendar_edit/calendar_remove/calendar_free_time.
 • الطقس weather، مواقيت الصلاة prayer_times، التحويل الهجري convert_date، العملات currency_convert، والبحث في الإنترنت.
 • تذكيرات للمالك نفسه set_reminder (تنبيه على تيليجرام/واتساب).
+• **الدفع بضغطة** prepare_payment: لأي حجز/شراء/طلب/فاتورة يقرره المالك — جهز الخيار وأرسل له بطاقة دفع برابط مباشر، يدفع بنفسه بضغطة وبصمة، والنظام يثبت الحجز تلقائياً من إيميل التأكيد. («احجز لي رحلة جدة» = ابحث وجهز الدفع، مو بس تعطيه خيارات.)
 واتساب للناس: send_whatsapp يرسل من رقم السكرتير ويراقب الرد تلقائياً. لو قال المالك "إذا رد فلان بلغني" استخدم watch_whatsapp — الردود توصل له فوراً، فلا تقل إنك ما تقدر تراقب.
 الإيميل والتقويم: لقراءة إيميلات المالك استخدم gmail_search (لحظي من Gmail) ثم gmail_read للتفاصيل، ولتقويم Google استخدم google_calendar.
 المرفقات: صورة فاتورة/إيصال ← سجّلها مصروف. صورة رسالة بنك ← record_bank_message. صورة بطاقة/رقم ← جهة اتصال. صورة وثيقة (جواز/رخصة/استمارة) ← سجّل اسمها وتاريخ انتهائها فقط بدون أرقامها. مستند/PDF ← لخصه ونفّذ المطلوب. صورة منتج ← ابحث عنه وقارن أسعاره.
@@ -194,7 +199,7 @@ ${await companyContext()}`;
   try {
     const result = await llm.runAgent({
       system, input: content, history: await ownerHistory(), tools, maxSteps: 24,
-      ctx: { agent: 'manager', agentIcon: '🧠', progress, byOwner: true }
+      ctx: { agent: 'manager', agentIcon: '🧠', progress, byOwner: true, channel }
     });
     await finishRun(run, result);
     await db.q('INSERT INTO owner_chat (role, text, channel) VALUES ($1,$2,$3), ($4,$5,$3)', ['owner', text || '[مرفق]', channel, 'agent', result.text]);

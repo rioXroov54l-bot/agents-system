@@ -74,6 +74,8 @@ async function today() {
   const extra = [];
   if (Number(shop.n)) extra.push(`🛒 ${shop.n} غرض بقائمة المقاضي`);
   if (Number(ap.n)) extra.push(`🟡 ${ap.n} موافقة تنتظرك`);
+  const pp = await db.one("SELECT count(*) AS n FROM purchases WHERE status='awaiting_payment'").catch(() => ({ n: 0 }));
+  if (Number(pp.n)) extra.push(`💳 ${pp.n} حجز/طلب ينتظر دفعك`);
   if (extra.length) L.push('\n' + extra.join(' | '));
   L.push('\n💬 قل لي أي شي تبيه اليوم وأنا أرتبه لك.');
   return L.join('\n');
@@ -199,4 +201,14 @@ async function watched() {
   return '👀 **أرقام أوصّلك ردودها**\n\n' + w.map(x => `• ${x.name || x.phone}${x.name ? ' (' + x.phone + ')' : ''} — لين ${String(x.until).slice(0, 10)}${x.note ? '\n  📝 ' + x.note : ''}`).join('\n') + '\n\n💬 «وقف مراقبة 05xxxxxxxx»';
 }
 
-module.exports = { today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };
+async function payments() {
+  const list = await db.many("SELECT * FROM purchases WHERE status='awaiting_payment' ORDER BY id DESC LIMIT 15").catch(() => []);
+  const paid = await db.many("SELECT id, title, amount, currency, paid_at, confirmation FROM purchases WHERE status='paid' ORDER BY paid_at DESC LIMIT 5").catch(() => []);
+  if (!list.length && !paid.length) return '💳 ما فيه طلبات دفع.\n\n💬 «احجز لي رحلة لجدة الخميس» وأجهزها لك بضغطة';
+  const L = [];
+  if (list.length) L.push('💳 **تنتظر دفعك**\n' + list.map(p => `• **#${p.id}** ${p.title}${p.amount ? ' — ' + U.money(p.amount) + ' ' + (p.currency === 'SAR' ? 'ريال' : p.currency) : ''}\n${p.link || ''}`).join('\n\n') + '\n\nبعد الدفع ما تحتاج تسوي شي، أو اكتب «دفعت رقم»');
+  if (paid.length) L.push('✅ **آخر المدفوعات**\n' + paid.map(p => `• #${p.id} ${p.title}${p.confirmation ? ' — 🔖 ' + p.confirmation : ''} (${U.fmt(p.paid_at).slice(0, 10)})`).join('\n'));
+  return L.join('\n\n');
+}
+
+module.exports = { payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };
