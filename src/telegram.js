@@ -25,23 +25,14 @@ async function downloadFile(fileId) {
   return { data: Buffer.from(await res.arrayBuffer()).toString('base64'), path: f.file_path };
 }
 
-const HELP = `أنا سكرتيرك الشخصي 👋 كلمني بكلامك العادي عن أي شي، مثلاً:
-
-📅 «عندي موعد أسنان الأحد 5 العصر في عيادة النخبة»
-⏰ «ذكرني بدواء الضغط كل يوم 9 الصبح»
-✈️ «أبي أسافر دبي الخميس الجاي وأرجع السبت، دور لي طيران وفندق قريب من المترو»
-🛒 «ضيف للمقاضي: حليب، خبز، رز بسمتي 5 كيلو» أو «قارن لي أسعار آيفون 17 برو»
-🍔 «جهز لي طلب عشا من البيك على جاهز»
-💰 «صرفت 180 بنزين» أو أرسل **صورة فاتورة** أو «كم صرفت هالشهر على المطاعم؟»
-🧾 «فاتورة الجوال 230 ريال تنزل يوم 5 كل شهر»
-🪪 «إقامة العامل تنتهي 2027-03-10» «رخصتي تنتهي بعد 3 شهور»
-🎂 «عيد ميلاد أمي 12 مارس»
-✍️ «اكتب لي خطاب اعتذار رسمي للمدير عن الغياب»
-🎯 «أبي أقرأ 20 صفحة يومياً» — «قريت 25 صفحة»
-🔎 «وش أفضل تأمين سيارة شامل في السعودية؟»
-📧 «وش آخر إيميلاتي المهمة؟ رد على إيميل البنك»
-
-أوامر سريعة: /today /tasks /money /shop /bills /approvals`;
+const M = require('./menu');
+const HELP = M.telegramMenu().text;
+// يرسل الأزرار الثابتة + القائمة التفصيلية
+async function sendMenu(chatId, prefix = '') {
+  await ch.tgSend(chatId, (prefix ? prefix + '\n\n' : '') + '⌨️ **الأزرار السريعة جاهزة تحت الكيبورد** 👇', { keyboard: M.TG_KEYBOARD });
+  const mn = M.telegramMenu();
+  return ch.tgSend(chatId, mn.text, { buttons: mn.buttons });
+}
 
 async function handleUpdate(u) {
   if (u.callback_query) return handleCallback(u.callback_query);
@@ -59,7 +50,7 @@ async function handleUpdate(u) {
       await db.setSetting('telegram', { ...s.telegram, owner_id: chatId, pair_code: '' });
       await db.log('telegram', 'ربط حساب المالك بتيليجرام');
       if (ch.evoEnabled() && C.OWNER_PHONE) ch.sendWhatsApp(C.OWNER_PHONE, '✅ تيليجرام انربط. التنبيهات والموافقات بتوصلك هناك، وتقدر تكلمني من واتساب أو تيليجرام — نفس السكرتير ونفس الذاكرة 🤝').catch(() => {});
-      return ch.tgSend(chatId, '✅ تم ربط حسابك. أنا جاهز!\n\n' + HELP);
+      return sendMenu(chatId, '✅ **تم ربط حسابك. أنا جاهز!**');
     }
     if (code) {
       const mem = await db.one('SELECT * FROM members WHERE upper(link_code)=upper($1) AND active', [code]);
@@ -69,7 +60,7 @@ async function handleUpdate(u) {
         return ch.tgSend(chatId, `أهلاً ${mem.name} 👋 بتوصلك مهامك هنا، واضغط الأزرار لتحديث حالتها.`);
       }
     }
-    if (chatId === ownerId) return ch.tgSend(chatId, HELP);
+    if (chatId === ownerId) return sendMenu(chatId, '👋 أهلاً فيك');
     return ch.tgSend(chatId, 'أرسل كود الربط: /start الكود');
   }
 
@@ -88,9 +79,12 @@ async function handleUpdate(u) {
   }
 
   // المالك: أوامر سريعة
-  if (/^\/help/.test(text)) return ch.tgSend(chatId, HELP);
-  const qcmd = text.match(/^\/(today|tasks|money|shop|bills|approvals)\b/);
-  if (qcmd) return ch.tgSend(chatId, await quick[qcmd[1]]());
+  const qcmd = M.matchQuick(text);
+  if (qcmd === 'menu') return sendMenu(chatId);
+  if (qcmd) {
+    ch.tg('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
+    try { return await ch.tgSend(chatId, await quick[qcmd]()); } catch (e) { return ch.tgSend(chatId, '⚠️ ' + e.message.slice(0, 200)); }
+  }
   let m2;
   if ((m2 = text.match(/^(?:موافق|وافق)\s+#?(\d+)$/))) return ch.tgSend(chatId, await decide(m2[1], true));
   if ((m2 = text.match(/^رفض\s+#?(\d+)$/))) return ch.tgSend(chatId, await decide(m2[1], false));
@@ -133,6 +127,12 @@ async function handleCallback(cq) {
   const chatId = String(cq.message && cq.message.chat.id);
   const ownerId = await ch.ownerTelegramId();
   const [kind, id, action] = String(cq.data || '').split(':');
+  if (kind === 'mn') { // قائمة الأقسام: نعرض القسم بدون ما نشيل الأزرار
+    await ch.tg('answerCallbackQuery', { callback_query_id: cq.id }).catch(() => {});
+    if (chatId !== ownerId) return;
+    if (id === 'home') { const mn = M.telegramMenu(); return ch.tgSend(chatId, mn.text, { buttons: mn.buttons }); }
+    return ch.tgSend(chatId, M.sectionText(id) || 'قسم غير موجود', { buttons: [[{ text: '⬅️ رجوع للقائمة', callback_data: 'mn:home' }]] });
+  }
   let result = '';
   try {
     if (kind === 'ap') {

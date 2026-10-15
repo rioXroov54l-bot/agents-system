@@ -5,6 +5,8 @@ const ch = require('./channels');
 const quick = require('./quick');
 const { decide } = require('./approvals');
 const W = require('./watch');
+const M = require('./menu');
+let lastMenu = 0;
 const { appendConversation } = require('./tools');
 
 let agents;
@@ -34,8 +36,12 @@ async function handleOwner(num, { text, attachment, voice }) {
   const reply = t => ch.sendWhatsApp(num, t);
   if (voice && !text) return reply('🎙️ الرسائل الصوتية ما أقدر أسمعها للحين. اكتبها لي، أو استخدم إملاء الكيبورد 🎤');
   const t = text;
-  const map = { 'اليوم': 'today', '/today': 'today', 'مهامي': 'tasks', '/tasks': 'tasks', 'فلوسي': 'money', '/money': 'money', 'المقاضي': 'shop', '/shop': 'shop', 'الفواتير': 'bills', '/bills': 'bills', 'الموافقات': 'approvals', '/approvals': 'approvals' };
-  if (map[t]) return reply(await quick[map[t]]());
+  const qcmd = M.matchQuick(t);
+  if (qcmd === 'menu') { lastMenu = Date.now(); return reply(M.whatsappMenu()); }
+  if (qcmd) { typing(num); try { return reply(await quick[qcmd]()); } catch (e) { return reply('⚠️ ' + e.message.slice(0, 200)); } }
+  // رقم قسم بعد عرض القائمة (خلال 15 دقيقة)
+  const n = t.replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+  if (/^\d{1,2}$/.test(n) && Date.now() - lastMenu < 15 * 6e4) { const sec = M.sectionByNumber(n); if (sec) return reply(sec + '\n\n📋 أرسل رقم ثاني، أو *القائمة* للرجوع'); }
   let m;
   if ((m = t.match(/^(?:موافق|وافق)\s+#?(\d+)$/))) return reply(await decide(m[1], true));
   if ((m = t.match(/^رفض\s+#?(\d+)$/))) return reply(await decide(m[1], false));

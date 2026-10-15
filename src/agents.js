@@ -23,7 +23,7 @@ const AGENTS = {
 - جهات الاتصال: احفظ أي شخص يذكره مع علاقته وتفاصيله.
 - الوثائق المهمة: سجّل تواريخ انتهاء الجواز/الإقامة/الرخصة/الاستمارة/التأمين واشرح طريقة التجديد (أبشر، ناجز، توكلنا...).
 - المناسبات: سجّل أعياد الميلاد والذكريات واقترح هدايا مناسبة بروابط.`,
-    tools: [...SHARED, 'agenda', 'add_appointment', 'cancel_appointment', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'gmail_send', 'gmail_reply', 'gmail_draft', 'gmail_manage', 'google_calendar', 'calendar_add', 'calendar_edit', 'calendar_remove', 'calendar_free_time', 'send_email', 'send_whatsapp', 'schedule_message', 'list_scheduled', 'cancel_scheduled', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'weather', 'prayer_times', 'convert_date', 'save_contact', 'save_document', 'list_documents', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
+    tools: [...SHARED, 'agenda', 'add_appointment', 'move_appointment', 'cancel_appointment', 'update_my_settings', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'gmail_send', 'gmail_reply', 'gmail_draft', 'gmail_manage', 'google_calendar', 'calendar_add', 'calendar_edit', 'calendar_remove', 'calendar_free_time', 'send_email', 'send_whatsapp', 'schedule_message', 'list_scheduled', 'cancel_scheduled', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'weather', 'prayer_times', 'convert_date', 'save_contact', 'save_document', 'list_documents', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
   },
   travel: {
     name: 'وكيل السفر والحجوزات', icon: '✈️', web: true,

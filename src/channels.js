@@ -24,7 +24,7 @@ const tgHtml = s => String(s ?? '')
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
   .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
 
-async function tgSend(chatId, text, { buttons, html = true } = {}) {
+async function tgSend(chatId, text, { buttons, keyboard, html = true } = {}) {
   const chunks = [];
   let t = String(text || '').trim() || '—';
   while (t.length > 3900) {
@@ -37,6 +37,7 @@ async function tgSend(chatId, text, { buttons, html = true } = {}) {
     const payload = { chat_id: chatId, text: html ? tgHtml(chunks[i]) : chunks[i], disable_web_page_preview: true };
     if (html) payload.parse_mode = 'HTML';
     if (buttons && i === chunks.length - 1) payload.reply_markup = { inline_keyboard: buttons };
+    else if (keyboard && i === chunks.length - 1) payload.reply_markup = { keyboard, resize_keyboard: true, is_persistent: true };
     try { last = await tg('sendMessage', payload); }
     catch (e) { // لو فشل التنسيق نرسل نص خام
       delete payload.parse_mode; payload.text = chunks[i]; last = await tg('sendMessage', payload);
@@ -61,16 +62,8 @@ async function setupTelegramWebhook() {
       allowed_updates: ['message', 'callback_query'],
       drop_pending_updates: false
     });
-    await tg('setMyCommands', { commands: [
-      { command: 'start', description: 'البداية' },
-      { command: 'today', description: 'موجز اليوم' },
-      { command: 'tasks', description: 'المهام المفتوحة' },
-      { command: 'money', description: 'فلوسي هالشهر' },
-      { command: 'shop', description: 'قائمة المقاضي' },
-      { command: 'bills', description: 'الفواتير والاشتراكات' },
-      { command: 'approvals', description: 'الموافقات المعلقة' },
-      { command: 'help', description: 'وش أقدر أسوي' }
-    ] });
+    const { QUICK } = require('./menu');
+    await tg('setMyCommands', { commands: [{ command: 'start', description: 'البداية والأزرار' }, ...QUICK.map(q => ({ command: q.cmd, description: `${q.icon} ${q.desc}` })), { command: 'help', description: '📋 كل اللي أقدر أسويه' }] });
     console.log('✅ تيليجرام جاهز');
   } catch (e) { console.error('⚠️ تيليجرام:', e.message); }
 }

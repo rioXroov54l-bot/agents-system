@@ -418,9 +418,14 @@ def('add_appointment', 'احجز موعداً (يُضاف لتقويم Google ت
     const clash = await db.many('SELECT id, title, at FROM appointments WHERE at < $2 AND coalesce(end_at, at + interval \'1 hour\') > $1', [at, end]);
     const ap = await db.insert('appointments', { title: a.title, at, end_at: end, customer_id: a.customer_id, location: a.location, notes: a.notes }, ['title', 'at', 'end_at', 'customer_id', 'location', 'notes']);
     let gcal = 'تقويم Google غير مربوط';
-    if (ch.n8nReady()) {
-      try { const r = await ch.n8n('calendar.create', { title: a.title, start: at, end, description: [a.location, a.notes].filter(Boolean).join('\n') }); if (r && r.id) { await db.q('UPDATE appointments SET gcal_id=$2 WHERE id=$1', [ap.id, r.id]); gcal = 'أضيف لتقويم Google'; } }
-      catch (e) { gcal = 'تعذر الإضافة لتقويم Google: ' + e.message; }
+    try { // مباشرة من Google، وإذا ما تيسر عبر n8n
+      const r = await require('./google').calendarCreate({ title: a.title, start: at, end, location: a.location, description: a.notes, reminder_minutes: 60 });
+      await db.q('UPDATE appointments SET gcal_id=$2 WHERE id=$1', [ap.id, r.id]); gcal = 'أضيف لتقويم Google';
+    } catch (e1) {
+      if (ch.n8nReady()) {
+        try { const r = await ch.n8n('calendar.create', { title: a.title, start: at, end, description: [a.location, a.notes].filter(Boolean).join('\n') }); if (r && r.id) { await db.q('UPDATE appointments SET gcal_id=$2 WHERE id=$1', [ap.id, r.id]); gcal = 'أضيف لتقويم Google'; } }
+        catch (e) { gcal = 'تعذر الإضافة لتقويم Google: ' + e.message; }
+      }
     }
     await db.log('appt', `موعد #${ap.id}: ${a.title} (${U.fmt(at)})`);
     return { id: ap.id, title: a.title, at: U.fmt(at), gcal, clashes: clash.map(c => `#${c.id} ${c.title} ${U.fmt(c.at)}`) };
@@ -430,8 +435,37 @@ def('cancel_appointment', 'ألغِ موعداً (ويُحذف من تقويم G
   async ({ id }) => {
     const a = await db.one('DELETE FROM appointments WHERE id=$1 RETURNING *', [id]);
     if (!a) throw new Error('الموعد غير موجود');
-    if (a.gcal_id && ch.n8nReady()) ch.n8n('calendar.delete', { id: a.gcal_id }).catch(() => {});
+    if (a.gcal_id) require('./google').calendarDelete(a.gcal_id).catch(() => ch.n8nReady() && ch.n8n('calendar.delete', { id: a.gcal_id }).catch(() => {}));
     return `انلغى الموعد: ${a.title}`;
+  });
+
+def('move_appointment', 'عدّل موعد مسجل (تأجيل/تقديم/تغيير العنوان أو المكان) — ويتحدث في تقويم Google.',
+  S({ id: int('رقم الموعد'), datetime: str('الوقت الجديد YYYY-MM-DD HH:mm'), duration_min: int('المدة بالدقائق'), title: str('عنوان جديد'), location: str('مكان جديد'), notes: str('ملاحظات') }, ['id']),
+  async (a) => {
+    const old = await db.one('SELECT * FROM appointments WHERE id=$1', [a.id]);
+    if (!old) throw new Error('الموعد غير موجود');
+    const at = a.datetime ? U.parseLocal(a.datetime) : old.at;
+    const dur = a.duration_min || Math.round((new Date(old.end_at || new Date(new Date(old.at).getTime() + 3600e3)) - new Date(old.at)) / 6e4);
+    const end = new Date(new Date(at).getTime() + dur * 6e4).toISOString();
+    const up = await db.one('UPDATE appointments SET title=$2, at=$3, end_at=$4, location=$5, notes=$6, reminded=false WHERE id=$1 RETURNING *',
+      [a.id, a.title || old.title, at, end, a.location !== undefined ? a.location : old.location, a.notes !== undefined ? a.notes : old.notes]);
+    let gcal = '';
+    if (old.gcal_id) { try { await require('./google').calendarUpdate({ id: old.gcal_id, title: up.title, start: at, end, location: up.location || undefined }); gcal = ' وتحدث في تقويم Google'; } catch (e) { gcal = ' (ما قدرت أحدثه في Google: ' + e.message + ')'; } }
+    await db.log('appt', `تعديل موعد #${a.id}: ${up.title} (${U.fmt(at)})`);
+    return `✅ الموعد #${a.id} «${up.title}» صار ${U.fmt(at)}${gcal}`;
+  });
+
+def('update_my_settings', 'غيّر إعدادات المالك: ساعة الموجز الصباحي، ساعة ملخص المساء، وين توصله التنبيهات، أو بياناته (الاسم، المدينة، المطار، العائلة، التفضيلات، التوقيع).',
+  S({ morning_hour: int('ساعة الموجز الصباحي 0-23'), evening_hour: int('ساعة ملخص المساء 0-23'), notify_channel: str('auto | telegram | whatsapp | both'),
+    name: str('الاسم'), city: str('المدينة'), home_airport: str('رمز المطار'), family: str('العائلة'), preferences: str('التفضيلات'), signature: str('توقيع الإيميل') }),
+  async (a) => {
+    const s = await db.getSettings(), done = [];
+    if (a.morning_hour !== undefined) { await db.setSetting('morning_hour', Math.min(23, Math.max(0, a.morning_hour))); done.push(`الموجز الصباحي الساعة ${a.morning_hour}`); }
+    if (a.evening_hour !== undefined) { await db.setSetting('report_hour', Math.min(23, Math.max(0, a.evening_hour))); done.push(`ملخص المساء الساعة ${a.evening_hour}`); }
+    if (a.notify_channel && ['auto', 'telegram', 'whatsapp', 'both'].includes(a.notify_channel)) { await db.setSetting('notify_channel', a.notify_channel); done.push(`التنبيهات: ${a.notify_channel}`); }
+    const pf = {}; for (const k of ['name', 'city', 'home_airport', 'family', 'preferences', 'signature']) if (a[k] !== undefined) pf[k] = a[k];
+    if (Object.keys(pf).length) { await db.setSetting('profile', { ...(s.profile || {}), ...pf }); done.push('بياناتك: ' + Object.keys(pf).join('، ')); }
+    return done.length ? '✅ انحفظ: ' + done.join(' | ') : 'ما فيه شي يتغير';
   });
 
 def('set_reminder', 'ذكّر المالك بشيء في وقت محدد (يوصله على تيليجرام). at بصيغة YYYY-MM-DD HH:mm.',

@@ -138,4 +138,65 @@ async function evening() {
   return L.join('\n');
 }
 
-module.exports = { today, tasks, money, shop, bills, approvals, evening };
+const cityOf = async () => ((await db.getSettings()).profile || {}).city || 'الرياض';
+
+async function weather() {
+  const w = await require('./world').weather(await cityOf(), 3);
+  return `🌤️ **الطقس في ${w.city}**\nالحين: **${w.now.temp}°** (يحس ${w.now.feels_like}°) — ${w.now.sky}\nالرطوبة ${w.now.humidity}% | الرياح ${w.now.wind_kmh} كم/س\n\n` +
+    w.days.map((d, i) => `${i === 0 ? '**اليوم**' : i === 1 ? '**بكرة**' : '**' + d.day + '**'}: ${d.max}° / ${d.min}° — ${d.sky}${d.rain_chance ? ` | مطر ${d.rain_chance}%` : ''}${d.uv >= 8 && i === 0 ? ' | ☀️ أشعة قوية' : ''}`).join('\n') +
+    '\n\n💬 لمدينة ثانية: «وش الطقس في جدة بكرة؟»';
+}
+
+async function prayer() {
+  const W = require('./world'), city = await cityOf();
+  const [p, nx] = await Promise.all([W.prayerTimes(city), W.nextPrayer(city).catch(() => null)]);
+  return `🕌 **مواقيت الصلاة — ${p.city}**\n${p.hijri}\n\n` + Object.entries(p.times).map(([n, t]) => `${nx && nx.name === n ? '👉 ' : '• '}${n}: **${t}**`).join('\n') +
+    (nx ? `\n\nالصلاة الجاية: **${nx.name}** الساعة ${nx.time}` : '') + '\n(تقويم أم القرى)';
+}
+
+async function hijri() {
+  const d = require('./world').convertDate({ gregorian: U.riyadhDay() });
+  return `🗓️ **اليوم ${d.day}**\n• هجري: **${d.hijri}**\n• ميلادي: **${d.gregorian}**\n\n💬 للتحويل: «كم يوافق 1 رمضان 1448؟»`;
+}
+
+async function emails() {
+  let r;
+  try { r = await require('./google').gmailSearch({ query: 'is:unread newer_than:3d -category:promotions -category:social', max: 12 }); }
+  catch (e) { return '📧 ما قدرت أفتح Gmail: ' + e.message; }
+  if (!r.count) return '📧 ما عندك إيميلات غير مقروءة (آخر ٣ أيام) ✅';
+  return `📧 **إيميلات ما قريتها (آخر ٣ أيام): ${r.count}${r.count >= 12 ? '+' : ''}**\n\n` +
+    r.emails.map((e, i) => `**${i + 1}. ${String(e.from).replace(/<.*>/, '').replace(/"/g, '').trim() || e.from}**\n${e.subject || '(بدون عنوان)'}\n_${String(e.snippet || '').slice(0, 110)}_`).join('\n\n').replace(/_([^_]+)_/g, '$1') +
+    '\n\n💬 «لخص لي إيميل 1» أو «رد على إيميل 2 وقل...» أو «أرشف إيميلات العروض»';
+}
+
+async function calendar() {
+  const start = new Date().toISOString(), end = new Date(Date.now() + 7 * 864e5).toISOString();
+  const [local, g] = await Promise.all([
+    db.many('SELECT title, at, location FROM appointments WHERE at >= $1 AND at < $2 ORDER BY at', [start, end]),
+    safe(require('./google').calendarEvents({ from: start, to: end, max: 50 }))
+  ]);
+  const seen = new Set(), items = [];
+  for (const a of local) { seen.add(a.title.trim() + '|' + U.fmt(a.at)); items.push({ t: a.at, title: a.title, loc: a.location }); }
+  for (const e of g || []) { const t = e.start.includes('T') ? e.start : e.start + 'T00:00:00+03:00'; const k = e.title.trim() + '|' + U.fmt(t); if (!seen.has(k)) { seen.add(k); items.push({ t, title: e.title, loc: e.location, allDay: !e.start.includes('T') }); } }
+  if (!items.length) return '📅 ما عندك مواعيد خلال الأسبوع الجاي' + (g ? '' : ' (تقويم Google غير مربوط)') + '\n\n💬 «عندي موعد ... يوم ... الساعة ...»';
+  items.sort((a, b) => new Date(a.t) - new Date(b.t));
+  const days = {};
+  for (const i of items) { const d = U.fmt(i.t).slice(0, 10); (days[d] = days[d] || []).push(i); }
+  const DN = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+  return '📅 **مواعيدك للأسبوع الجاي**\n' + Object.entries(days).map(([d, list]) => `\n**${d === U.riyadhDay() ? 'اليوم' : DN[new Date(d + 'T12:00:00Z').getUTCDay()]} ${d.slice(5)}**\n` +
+    list.map(i => `• ${i.allDay ? 'طول اليوم' : hm(i.t)} — ${i.title}${i.loc ? ' 📍' + i.loc : ''}`).join('\n')).join('\n') + '\n\n💬 «متى أنا فاضي بكرة؟»';
+}
+
+async function scheduled() {
+  const ms = await db.many("SELECT id, channel, recipient, name, text, at, repeat, status, error FROM scheduled_messages WHERE status IN ('pending','failed') ORDER BY at LIMIT 30").catch(() => []);
+  if (!ms.length) return '📤 ما فيه رسائل مجدولة.\n\n💬 «أرسل لـ 05xxxxxxxx الساعة 8 الصبح: ...»';
+  return '📤 **الرسائل المجدولة**\n\n' + ms.map(m => `**#${m.id}** ${m.status === 'failed' ? '⚠️ فشلت' : '⏳'} ${U.fmt(m.at)}${m.repeat && m.repeat !== 'none' ? ' 🔁 ' + m.repeat : ''}\n${m.channel === 'email' ? '📧' : '💬'} إلى ${m.name || m.recipient}\n«${String(m.text).slice(0, 120)}»${m.error ? '\nالسبب: ' + m.error : ''}`).join('\n\n') + '\n\n💬 «ألغ الرسالة رقم ...»';
+}
+
+async function watched() {
+  const w = Object.values(await require('./watch').all());
+  if (!w.length) return '👀 ما فيه أرقام تحت المراقبة.\n\n💬 «راقب 05xxxxxxxx وبلغني إذا رد»';
+  return '👀 **أرقام أوصّلك ردودها**\n\n' + w.map(x => `• ${x.name || x.phone}${x.name ? ' (' + x.phone + ')' : ''} — لين ${String(x.until).slice(0, 10)}${x.note ? '\n  📝 ' + x.note : ''}`).join('\n') + '\n\n💬 «وقف مراقبة 05xxxxxxxx»';
+}
+
+module.exports = { today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };
