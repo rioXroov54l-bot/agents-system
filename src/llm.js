@@ -60,7 +60,16 @@ async function runAgent({ system, input, history = [], tools = [], model = C.MOD
     }
 
     if (data.stop_reason === 'pause_turn') continue;
-    if (data.stop_reason !== 'tool_use') return { text: textOf(data.content), steps, usage };
+    if (data.stop_reason !== 'tool_use') {
+      let text = textOf(data.content);
+      if (!String(text || '').trim()) { // أحياناً ينهي بدون نص: نطلب الرد النهائي صراحة
+        messages.push({ role: 'user', content: 'اكتب الحين ردك النهائي للمالك (وش انعمل وش الخطوة الجاية) بدون أدوات.' });
+        const fin = await callClaude({ system, messages, tools: apiTools, model, toolChoice: { type: 'none' } }).catch(() => null);
+        text = fin ? textOf(fin.content) : '';
+      }
+      if (!String(text || '').trim()) text = fallbackText(steps);
+      return { text, steps, usage };
+    }
 
     const results = [];
     for (const b of data.content) {
@@ -82,8 +91,15 @@ async function runAgent({ system, input, history = [], tools = [], model = C.MOD
   }
   // تجاوز الحد: نطلب خلاصة نهائية
   messages.push({ role: 'user', content: 'توقف عن استخدام الأدوات الآن واكتب خلاصة ما أنجزته وما بقي.' });
-  const final = await callClaude({ system, messages, tools: apiTools, model, toolChoice: { type: 'none' } });
-  return { text: textOf(final.content), steps, usage };
+  const final = await callClaude({ system, messages, tools: apiTools, model, toolChoice: { type: 'none' } }).catch(() => null);
+  const text = final ? textOf(final.content) : '';
+  return { text: String(text || '').trim() ? text : fallbackText(steps), steps, usage };
+}
+
+// لو ما رجع نص أبداً: نلخص وش انعمل من الأدوات بدل رد فاضي
+function fallbackText(steps) {
+  const done = steps.filter(s => s.ok !== false && s.result).slice(-4).map(s => '• ' + String(s.result).replace(/^"|"$/g, '').slice(0, 220));
+  return done.length ? '✅ تم:\n' + done.join('\n') : 'تمام 👍 وش تبيني أسوي بالضبط؟';
 }
 
 module.exports = { callClaude, ask, runAgent, parseJson, textOf };

@@ -11,6 +11,7 @@ require('./pay'); // الدفع بضغطة
 require('./extras'); // المهام المتكررة، المتابعة، الصلاة، التهاني، تنظيف الإيميل
 require('./reports'); // مستندات وتقارير احترافية
 require('./life'); // الصحة، الممتلكات، التواصل، الاستثمار
+require('./pricewatch'); // متابعة الأسعار والتوفر
 const personal = require('./personal');
 
 const WEB_SEARCH = { spec: { type: 'web_search_20250305', name: 'web_search', max_uses: 10, user_location: { type: 'approximate', country: 'SA', city: 'Riyadh', timezone: 'Asia/Riyadh' } } };
@@ -27,7 +28,7 @@ const AGENTS = {
 - جهات الاتصال: احفظ أي شخص يذكره مع علاقته وتفاصيله.
 - الوثائق المهمة: سجّل تواريخ انتهاء الجواز/الإقامة/الرخصة/الاستمارة/التأمين واشرح طريقة التجديد (أبشر، ناجز، توكلنا...).
 - المناسبات: سجّل أعياد الميلاد والذكريات واقترح هدايا مناسبة بروابط.`,
-    tools: [...SHARED, 'agenda', 'add_appointment', 'move_appointment', 'cancel_appointment', 'update_my_settings', 'prepare_payment', 'mark_paid', 'list_pending_payments', 'booking_links', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'gmail_send', 'gmail_reply', 'gmail_draft', 'gmail_manage', 'google_calendar', 'calendar_add', 'calendar_edit', 'calendar_remove', 'calendar_free_time', 'send_email', 'send_whatsapp', 'schedule_message', 'list_scheduled', 'cancel_scheduled', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'weather', 'prayer_times', 'convert_date', 'save_contact', 'save_document', 'list_documents', 'vault_save', 'vault_get', 'vault_list', 'add_routine', 'list_routines', 'remove_routine', 'run_routine_now', 'set_prayer_alerts', 'greet_now', 'gmail_cleanup', 'add_asset', 'add_maintenance', 'log_maintenance', 'update_odometer', 'list_assets', 'keep_in_touch', 'contacted', 'publish_document', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
+    tools: [...SHARED, 'agenda', 'add_appointment', 'move_appointment', 'cancel_appointment', 'update_my_settings', 'prepare_payment', 'mark_paid', 'list_pending_payments', 'booking_links', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'gmail_send', 'gmail_reply', 'gmail_draft', 'gmail_manage', 'google_calendar', 'calendar_add', 'calendar_edit', 'calendar_remove', 'calendar_free_time', 'send_email', 'send_whatsapp', 'schedule_message', 'list_scheduled', 'cancel_scheduled', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'weather', 'prayer_times', 'convert_date', 'save_contact', 'save_document', 'list_documents', 'vault_save', 'vault_get', 'vault_list', 'add_routine', 'list_routines', 'remove_routine', 'run_routine_now', 'set_prayer_alerts', 'greet_now', 'gmail_cleanup', 'add_asset', 'add_maintenance', 'log_maintenance', 'update_odometer', 'list_assets', 'watch_price', 'list_price_watches', 'stop_price_watch', 'keep_in_touch', 'contacted', 'publish_document', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
   },
   travel: {
     name: 'وكيل السفر والحجوزات', icon: '✈️', web: true,
@@ -57,10 +58,11 @@ const AGENTS = {
 - قائمة المقاضي: أضف ورتب حسب القسم والمتجر.
 - أي منتج يبيه: ابحث وقارن الأسعار بين أمازون السعودية، نون، جرير، إكسترا، ساكو، والمتاجر الرسمية. اعرض أفضل 3 خيارات (السعر، التقييم، الضمان، التوصيل) مع روابط مباشرة. نبّه للعروض والكوبونات.
 - الطلبات (أكل، مقاضي، صيدلية): جهّز الطلب واقترح التطبيق المناسب (جاهز، هنقرستيشن، مرسول، نينجا، كيتا) مع الرابط. الدفع والتأكيد النهائي يكون من المالك.
+- **«تابع لي السعر» / «علمني متى يتوفر»**: دوّر بالبحث على رابط صفحة المنتج نفسه في المتجر المطلوب (لكل سعة/لون رابط) واستدعِ watch_price لكل رابط. يتابع كل ساعة بدون تكلفة ويبلغه بس لما يتغير شي.
 - لما يقرر المالك يشتري/يطلب شي محدد: استدعِ prepare_payment (kind=order أو food) بالمنتج والسعر والرابط المباشر — توصله بطاقة دفع بضغطة.
 - الخدمات: فنيين، ورش سيارات، صيانة، تنظيف، نقل عفش: ابحث عن مقدمي خدمة بتقييمات عالية في مدينته مع أرقامهم.
 - لا تدخل بيانات دفع ولا تدّعي إتمام شراء.`,
-    tools: [...SHARED, 'add_shopping', 'list_shopping', 'check_shopping', 'save_contact', 'add_expense', 'currency_convert', 'prepare_payment', 'list_pending_payments']
+    tools: [...SHARED, 'add_shopping', 'list_shopping', 'check_shopping', 'save_contact', 'add_expense', 'currency_convert', 'prepare_payment', 'list_pending_payments', 'watch_price', 'list_price_watches', 'stop_price_watch', 'check_price_now']
   },
   writer: {
     name: 'وكيل الكتابة والتواصل', icon: '✍️', web: true,
@@ -198,7 +200,15 @@ async function ownerHistory(limit = 12) {
   return msgs;
 }
 
-async function runManager(text, { attachments = [], channel = 'dashboard', progress, isolated = false } = {}) {
+// رسائل المالك تنفذ بالترتيب (لو أرسل رسالتين ورا بعض، الثانية تشوف رد الأولى)
+let ownerLock = Promise.resolve();
+async function runManager(text, opts = {}) {
+  if (opts.isolated) return runManagerInner(text, opts);
+  const prev = ownerLock; let release; ownerLock = new Promise(r => { release = r; });
+  await prev.catch(() => {});
+  try { return await runManagerInner(text, opts); } finally { release(); }
+}
+async function runManagerInner(text, { attachments = [], channel = 'dashboard', progress, isolated = false } = {}) {
   const BUSINESS = ['find_customers', 'save_customer', 'customer_profile', 'log_interaction', 'list_products', 'save_product', 'list_deals', 'save_deal', 'create_quote', 'send_quote', 'list_quotes', 'update_quote_status', 'create_invoice', 'send_invoice', 'record_payment', 'list_invoices', 'finance_summary', 'save_content', 'list_content', 'business_overview'];
   const allTools = Object.values(T).filter(t => !BUSINESS.includes(t.name));
   const tools = [DELEGATE, ...allTools, WEB_SEARCH];
@@ -219,6 +229,7 @@ async function runManager(text, { attachments = [], channel = 'dashboard', progr
 • **مستندات احترافية** publish_document: أي تقرير/دراسة/مقارنة/خطاب/سيرة ذاتية/دليل ← رابط أنيق يحفظ PDF. الطلبات الكبيرة فوّضها لوكيل البحث والتقارير.
 • **المعاملات الحكومية** (أبشر، ناجز، تجديد، تأشيرات...) فوّضها لوكيل المعاملات الحكومية. **الصحة** (أدوية بمواعيد، قراءات، تحاليل) لوكيل الصحة.
 • الممتلكات والصيانة والضمانات (add_asset/add_maintenance/log_maintenance)، التواصل مع الناس (keep_in_touch/contacted)، الأسواق والمحفظة (market_quote/portfolio_report/add_holding).
+• **متابعة سعر/توفر منتج** («تابع السعر»، «علمني متى يتوفر»، «كل ساعة شيك على...»): watch_price برابط صفحة المنتج — مو add_routine. يشيك كل ساعة مجاناً ويبلغ بس عند التغيير.
 • مهام ذكية متكررة add_routine: «كل يوم 8 الصبح أرسل لي أهم الأخبار»، «كل أحد شيك على سعر كذا» — تنفذ وترسل النتيجة تلقائياً.
 • تنبيه قبل كل صلاة set_prayer_alerts. تهنئة جاهزة لأي مناسبة greet_now. تنظيف الإيميل الجماعي gmail_cleanup.
 • إذا ما رد شخص على رسالة خلال 24 ساعة النظام يبلغ المالك؛ لو قال «ذكّره» أرسل له تذكير مهذب بـ send_whatsapp لنفس الرقم.

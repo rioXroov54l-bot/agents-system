@@ -75,6 +75,8 @@ async function today() {
   const extra = [];
   if (Number(shop.n)) extra.push(`🛒 ${shop.n} غرض بقائمة المقاضي`);
   if (Number(ap.n)) extra.push(`🟡 ${ap.n} موافقة تنتظرك`);
+  const pw = await db.many('SELECT label, last_price, currency, last_available FROM price_watches WHERE active ORDER BY id LIMIT 6').catch(() => []);
+  if (pw.length) L.push('\n🔔 **منتجات أتابعها**', pw.map(w => `• ${w.label}: ${w.last_price ? Number(w.last_price).toLocaleString('en-US') + ' ' + (w.currency === 'SAR' || !w.currency ? 'ريال' : w.currency) : '—'} ${w.last_available === true ? '✅' : w.last_available === false ? '❌ غير متوفر' : ''}`).join('\n'));
   const pp = await db.one("SELECT count(*) AS n FROM purchases WHERE status='awaiting_payment'").catch(() => ({ n: 0 }));
   if (Number(pp.n)) extra.push(`💳 ${pp.n} حجز/طلب ينتظر دفعك`);
   if (extra.length) L.push('\n' + extra.join(' | '));
@@ -246,4 +248,6 @@ async function assets() {
     a.maintenance.map(m => `\n  🔧 ${m.task}: ${m.next_due || ''}${m.km_due ? (m.next_due ? ' أو ' : '') + m.km_due + ' كم' : ''}`).join('')).join('\n\n');
 }
 
-module.exports = { docs, meds, portfolio, assets, routines, payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };
+const watches = () => require('./pricewatch').quick();
+
+module.exports = { watches, docs, meds, portfolio, assets, routines, payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };
