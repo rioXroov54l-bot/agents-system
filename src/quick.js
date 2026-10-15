@@ -5,32 +5,77 @@ const U = require('./util');
 const PRI = { urgent: '🔴', high: '🟠', normal: '🔵', low: '⚪' };
 const T = () => require('./tools').T;
 
-async function today() {
-  const start = U.parseLocal(U.riyadhDay() + 'T00:00'), end = new Date(new Date(start).getTime() + 86400e3).toISOString();
-  const appts = await db.many('SELECT title, at, location FROM appointments WHERE at >= $1 AND at < $2 ORDER BY at', [start, end]);
-  const rem = await db.many('SELECT text, at, repeat FROM reminders WHERE NOT done AND at >= $1 AND at < $2 ORDER BY at', [start, end]);
-  const tasks = await db.many("SELECT t.id, t.title, t.due_at, t.priority, m.name AS who FROM tasks t LEFT JOIN members m ON m.id=t.assignee_id WHERE t.status<>'done' AND t.due_at < $1 ORDER BY t.due_at", [end]);
-  const bills = (await T().list_bills.handler({ due_within_days: 7 })).bills;
-  const docs = (await T().list_documents.handler({})).filter(d => d.days_left !== null && d.days_left <= 60);
-  const occ = await T().upcoming_occasions.handler({ days: 14 });
-  const trips = await db.many("SELECT title, depart_at FROM trips WHERE status IN ('booked','options_ready','planning') AND depart_at BETWEEN now() AND now() + interval '14 days' ORDER BY depart_at");
-  const shop = await db.one('SELECT count(*) AS n FROM shopping WHERE NOT done');
-  const ap = await db.one("SELECT count(*) AS n FROM approvals WHERE status='pending'");
-  const goals = await T().list_goals.handler({}).catch(() => []);
+const safe = (p, ms = 12000) => Promise.race([p, new Promise(r => setTimeout(() => r(null), ms))]).catch(() => null);
+const hm = iso => U.fmt(iso).slice(11, 16);
 
-  const L = [`☀️ **صباح الخير — ${U.riyadhNow().replace(' (توقيت الرياض)', '')}**`];
-  L.push('\n📅 **مواعيد اليوم**', appts.length ? appts.map(a => `• ${U.fmt(a.at).slice(11)} — ${a.title}${a.location ? ' 📍' + a.location : ''}`).join('\n') : '• يومك فاضي من المواعيد');
-  if (rem.length) L.push('\n⏰ **تذكيرات اليوم**', rem.map(r => `• ${U.fmt(r.at).slice(11)} ${r.text}`).join('\n'));
-  if (tasks.length) L.push('\n✅ **مهام مستحقة**', tasks.slice(0, 10).map(t => `• ${PRI[t.priority] || ''} ${t.title}${t.who ? ' ← ' + t.who : ''}${new Date(t.due_at) < new Date() ? ' ⚠️ متأخرة' : ''}`).join('\n'));
+async function today() {
+  const s = await db.getSettings();
+  const p = s.profile || {};
+  const city = p.city || 'الرياض';
+  const day = U.riyadhDay();
+  const start = U.parseLocal(day + 'T00:00'), end = new Date(new Date(start).getTime() + 86400e3).toISOString();
+  const W = require('./world'), G = require('./google');
+
+  // كل المصادر بالتوازي، وأي مصدر يتأخر أو يفشل نتجاوزه
+  const [appts, rem, tasks, bills, docs, occ, trips, shop, ap, goals, sched, money, wx, pr, gcal, mail] = await Promise.all([
+    db.many('SELECT title, at, location FROM appointments WHERE at >= $1 AND at < $2 ORDER BY at', [start, end]),
+    db.many('SELECT text, at, repeat FROM reminders WHERE NOT done AND at >= $1 AND at < $2 ORDER BY at', [start, end]),
+    db.many("SELECT t.id, t.title, t.due_at, t.priority, m.name AS who FROM tasks t LEFT JOIN members m ON m.id=t.assignee_id WHERE t.status<>'done' AND t.due_at < $1 ORDER BY t.due_at", [end]),
+    T().list_bills.handler({ due_within_days: 7 }).then(r => r.bills).catch(() => []),
+    T().list_documents.handler({}).then(r => r.filter(d => d.days_left !== null && d.days_left <= 60)).catch(() => []),
+    T().upcoming_occasions.handler({ days: 14 }).catch(() => []),
+    db.many("SELECT title, depart_at FROM trips WHERE status IN ('booked','options_ready','planning') AND depart_at BETWEEN now() AND now() + interval '14 days' ORDER BY depart_at"),
+    db.one('SELECT count(*) AS n FROM shopping WHERE NOT done'),
+    db.one("SELECT count(*) AS n FROM approvals WHERE status='pending'"),
+    T().list_goals.handler({}).catch(() => []),
+    db.many("SELECT recipient, name, at FROM scheduled_messages WHERE status='pending' AND at >= $1 AND at < $2 ORDER BY at", [start, end]).catch(() => []),
+    T().money_report.handler({}).catch(() => null),
+    safe(W.weather(city, 1)), safe(W.prayerTimes(city)),
+    safe(G.calendarEvents({ from: start, to: end })), safe(G.gmailSearch({ query: 'is:unread newer_than:1d -category:promotions -category:social', max: 8 }))
+  ]);
+
+  const L = [];
+  L.push(`☀️ **صباح الخير${p.name ? ' يا ' + p.name : ''}**`);
+  L.push(`📆 ${U.riyadhNow().split(' ')[0]} ${day} — ${(pr && pr.hijri) || W.hijri()}`);
+  if (wx) { const d0 = wx.days[0] || {}; L.push(`🌡️ ${wx.city}: ${wx.now.temp}° الحين، العظمى ${d0.max}° والصغرى ${d0.min}° — ${d0.sky || wx.now.sky}${d0.rain_chance ? ` | مطر ${d0.rain_chance}%` : ''}${wx.now.wind_kmh >= 30 ? ` | رياح ${wx.now.wind_kmh} كم/س 💨` : ''}`); }
+  if (pr) L.push(`🕌 ${Object.entries(pr.times).filter(([n]) => n !== 'الشروق').map(([n, t]) => `${n} ${t}`).join(' · ')}`);
+
+  // أهم شي اليوم
+  const top = [];
+  const overdue = tasks.filter(t => new Date(t.due_at) < new Date());
+  if (overdue.length) top.push(`${overdue.length} مهمة متأخرة`);
+  const billsNow = bills.filter(b => b.days_left <= 0 && !b.autopay);
+  if (billsNow.length) top.push(`فاتورة مستحقة: ${billsNow.map(b => b.name).join('، ')}`);
+  const docsBad = docs.filter(d => d.days_left <= 7);
+  if (docsBad.length) top.push(`وثيقة ${docsBad[0].days_left < 0 ? 'منتهية' : 'تنتهي قريب'}: ${docsBad.map(d => d.name).join('، ')}`);
+  const occToday = occ.filter(o => o.days_left === 0);
+  if (occToday.length) top.push(`مناسبة اليوم 🎉: ${occToday.map(o => o.person).join('، ')}`);
+  if (top.length) L.push('\n🎯 **أهم شي اليوم**', top.map(t => '• ' + t).join('\n'));
+
+  // المواعيد: النظام + تقويم Google بدون تكرار
+  const seen = new Set();
+  const allAppts = [...appts.map(a => ({ t: a.at, title: a.title, loc: a.location })), ...((gcal || []).map(e => ({ t: e.start, title: e.title, loc: e.location, allDay: !e.start.includes('T') })))]
+    .filter(a => { const k = (a.title || '').trim() + '|' + (a.allDay ? 'd' : hm(a.t)); if (seen.has(k)) return false; seen.add(k); return true; })
+    .sort((a, b) => (a.allDay ? -1 : 0) - (b.allDay ? -1 : 0) || new Date(a.t) - new Date(b.t));
+  L.push('\n📅 **مواعيد اليوم**', allAppts.length ? allAppts.map(a => `• ${a.allDay ? 'طول اليوم' : hm(a.t)} — ${a.title}${a.loc ? ' 📍' + a.loc : ''}`).join('\n') : '• يومك فاضي من المواعيد');
+  if (rem.length) L.push('\n⏰ **تذكيرات اليوم**', rem.map(r => `• ${hm(r.at)} ${r.text}`).join('\n'));
+  if (sched.length) L.push('\n📤 **رسائل مجدولة اليوم**', sched.map(m => `• ${hm(m.at)} إلى ${m.name || m.recipient}`).join('\n'));
+  if (tasks.length) L.push('\n✅ **مهام مستحقة**', tasks.slice(0, 10).map(t => `• ${PRI[t.priority] || ''} ${t.title}${t.who ? ' ← ' + t.who : ''}${new Date(t.due_at) < new Date() ? ' ⚠️ متأخرة' : ' | ' + hm(t.due_at)}`).join('\n'));
+  if (mail && mail.count) L.push(`\n📧 **إيميلات ما قريتها (آخر 24 ساعة): ${mail.count}${mail.count >= 8 ? '+' : ''}**`, mail.emails.slice(0, 5).map(e => `• ${String(e.from).replace(/<.*>/, '').replace(/"/g, '').trim() || e.from} — ${e.subject || '(بدون عنوان)'}`).join('\n'));
   if (bills.length) L.push('\n🧾 **فواتير قريبة**', bills.map(b => `• ${b.name}${b.amount ? ' ' + U.money(b.amount) : ''} — ${b.days_left === 0 ? 'اليوم' : b.days_left < 0 ? 'متأخرة ' + (-b.days_left) + ' يوم' : 'بعد ' + b.days_left + ' يوم'}${b.autopay ? ' (تلقائي)' : ''}`).join('\n'));
   if (docs.length) L.push('\n🪪 **وثائق قربت تنتهي**', docs.map(d => `• ${d.name}${d.holder ? ' (' + d.holder + ')' : ''} — ${d.days_left < 0 ? 'منتهية!' : 'باقي ' + d.days_left + ' يوم'}`).join('\n'));
   if (occ.length) L.push('\n🎂 **مناسبات قريبة**', occ.map(o => `• ${o.person}: ${o.type === 'birthday' ? 'عيد ميلاد' : o.type === 'anniversary' ? 'ذكرى' : 'مناسبة'}${o.age ? ' (' + o.age + ')' : ''} — ${o.days_left === 0 ? 'اليوم 🎉' : 'بعد ' + o.days_left + ' يوم'}`).join('\n'));
   if (trips.length) L.push('\n✈️ **سفر قريب**', trips.map(t => `• ${t.title} — ${U.fmt(t.depart_at)}`).join('\n'));
+  if (money && (Number(money.spent) || Number(money.income))) {
+    const over = (money.by_category || []).filter(c => c.over).map(c => c.category);
+    L.push('\n💰 **فلوسك هالشهر**', `• صرفت ${U.money(money.spent)}${Number(money.income) ? ` من دخل ${U.money(money.income)} (الصافي ${U.money(money.net)})` : ''}${over.length ? `\n• 🔴 تجاوزت الميزانية في: ${over.join('، ')}` : ''}`);
+  }
   if (goals.length) L.push('\n🎯 **أهدافك**', goals.slice(0, 5).map(g => `• ${g.title}: ${g.progress}${g.target ? '/' + g.target : ''} ${g.unit || ''}${g.pct !== null ? ' (' + g.pct + '%)' : ''}`).join('\n'));
   const extra = [];
   if (Number(shop.n)) extra.push(`🛒 ${shop.n} غرض بقائمة المقاضي`);
   if (Number(ap.n)) extra.push(`🟡 ${ap.n} موافقة تنتظرك`);
   if (extra.length) L.push('\n' + extra.join(' | '));
+  L.push('\n💬 قل لي أي شي تبيه اليوم وأنا أرتبه لك.');
   return L.join('\n');
 }
 
@@ -78,10 +123,18 @@ async function evening() {
   const spent = await db.one('SELECT coalesce(sum(amount),0) AS s, count(*) AS n FROM expenses WHERE date = $1', [U.riyadhDay()]);
   const appts = await db.many('SELECT title, at FROM appointments WHERE at >= $1 AND at < $2 ORDER BY at', [tomorrow, after]);
   const rem = await db.many('SELECT text, at FROM reminders WHERE NOT done AND at >= $1 AND at < $2 ORDER BY at', [tomorrow, after]);
+  const W = require('./world'), G = require('./google'), city = ((await db.getSettings()).profile || {}).city || 'الرياض';
+  const [wx, gcal, sched] = await Promise.all([safe(W.weather(city, 2)), safe(G.calendarEvents({ from: tomorrow, to: after })),
+    db.many("SELECT recipient, name, at FROM scheduled_messages WHERE status='pending' AND at >= $1 AND at < $2 ORDER BY at", [tomorrow, after]).catch(() => [])]);
   const L = ['🌙 **ملخص يومك**'];
   L.push(done.length ? `✅ أنجزت ${done.length} مهمة: ${done.map(d => d.title).slice(0, 6).join('، ')}` : '✅ ما سجلت مهام منجزة اليوم');
   L.push(`💸 صرفت اليوم ${U.money(spent.s)} (${spent.n} عملية)`);
-  L.push('\n📅 **بكرة**', appts.length || rem.length ? [...appts.map(a => `• ${U.fmt(a.at).slice(11)} ${a.title}`), ...rem.map(r => `• ⏰ ${U.fmt(r.at).slice(11)} ${r.text}`)].join('\n') : '• ما فيه شي مسجل');
+  const seen = new Set(appts.map(a => a.title.trim()));
+  const tmr = [...appts.map(a => `• ${U.fmt(a.at).slice(11)} ${a.title}`), ...(gcal || []).filter(e => !seen.has(e.title.trim())).map(e => `• ${e.start.includes('T') ? hm(e.start) : 'طول اليوم'} ${e.title}`),
+    ...rem.map(r => `• ⏰ ${U.fmt(r.at).slice(11)} ${r.text}`), ...sched.map(m => `• 📤 ${hm(m.at)} رسالة إلى ${m.name || m.recipient}`)];
+  L.push('\n📅 **بكرة**', tmr.length ? tmr.join('\n') : '• ما فيه شي مسجل');
+  if (wx && wx.days[1]) { const d = wx.days[1]; L.push(`🌡️ طقس بكرة في ${wx.city}: ${d.max}°/${d.min}° — ${d.sky}${d.rain_chance ? ` | مطر ${d.rain_chance}%` : ''}`); }
+  L.push('\nتصبح على خير 🌙');
   return L.join('\n');
 }
 
