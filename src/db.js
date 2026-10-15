@@ -67,6 +67,10 @@ CREATE TABLE IF NOT EXISTS appointments (
   customer_id int, location text, notes text, gcal_id text, reminded boolean DEFAULT false,
   created_at timestamptz DEFAULT now());
 
+CREATE TABLE IF NOT EXISTS vault (
+  id serial PRIMARY KEY, label text NOT NULL, holder text DEFAULT 'أنا', data text NOT NULL,
+  created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now(), UNIQUE (label, holder));
+
 CREATE TABLE IF NOT EXISTS purchases (
   id serial PRIMARY KEY, kind text DEFAULT 'other', title text NOT NULL, vendor text, amount numeric, currency text DEFAULT 'SAR', link text,
   details jsonb DEFAULT '{}', trip_id int, status text DEFAULT 'awaiting_payment', confirmation text, reminded_at timestamptz,

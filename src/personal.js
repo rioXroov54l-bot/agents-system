@@ -81,11 +81,23 @@ def('pay_bill', 'سجّل سداد فاتورة/اشتراك: يضيفه للم�
   });
 
 // ---------- الوثائق المهمة ----------
-def('save_document', 'سجّل وثيقة مهمة وتاريخ انتهائها (جواز، هوية، إقامة، رخصة قيادة، استمارة، تأمين سيارة، فحص دوري، تأمين طبي، عقد إيجار...) لأذكّره قبل الانتهاء. لا تحفظ أرقام الهويات أو الجوازات.',
+def('save_document', 'سجّل وثيقة مهمة وتاريخ انتهائها (جواز، هوية، إقامة، رخصة قيادة، استمارة، تأمين سيارة، فحص دوري، تأمين طبي، عقد إيجار...) لأذكّره قبل الانتهاء. الأرقام والبيانات التفصيلية (رقم الجواز...) تنحفظ في الخزنة المشفرة بـ vault_save.',
   S({ id: int('للتحديث'), name: str('اسم الوثيقة'), holder: str('صاحبها: أنا، زوجتي، ابني...'), expires_on: str('تاريخ الانتهاء YYYY-MM-DD (ميلادي)'), notes: str('ملاحظات: طريقة التجديد، المتطلبات') }),
   async (a) => a.id ? db.update('documents', a.id, a, ['name', 'holder', 'expires_on', 'notes']) : db.insert('documents', a, ['name', 'holder', 'expires_on', 'notes']));
 def('list_documents', 'الوثائق وكم باقي على انتهائها.', S({}),
   async () => (await db.many('SELECT id, name, holder, expires_on, notes FROM documents ORDER BY expires_on NULLS LAST')).map(d => ({ ...d, days_left: d.expires_on ? daysUntil(dayStr(d.expires_on)) : null })));
+
+// ---------- الخزنة المشفرة (بيانات الوثائق) ----------
+const V = require('./vault');
+const ownerOnly = ctx => { if (!ctx || !ctx.byOwner) throw new Error('الخزنة ما تنفتح إلا بطلب مباشر من المالك 🔒'); };
+def('vault_save', 'احفظ بيانات وثيقة في الخزنة المشفرة بطلب المالك: رقم الجواز، الاسم كما في الجواز، الجنسية، تاريخ الميلاد، الإصدار والانتهاء، رقم الهوية/الإقامة/الرخصة... (مفيدة للحجوزات والمعاملات). ممنوع: بطاقات الدفع وكلمات السر ورموز التحقق. احفظ تاريخ الانتهاء أيضاً بـ save_document للتذكير.',
+  S({ label: str('اسم الوثيقة: جواز السفر، الهوية الوطنية، الإقامة، رخصة القيادة...'), holder: str('صاحبها: أنا، زوجتي، ابني فلان...'),
+    fields: { type: 'object', description: 'الحقول بالمفتاح والقيمة، مثل: {"passport_number":"...","full_name_en":"...","nationality":"...","date_of_birth":"YYYY-MM-DD","issue_date":"...","expiry_date":"...","place_of_birth":"...","place_of_issue":"..."}', additionalProperties: { type: 'string' } } }, ['label', 'fields']),
+  async (a, ctx) => { ownerOnly(ctx); return V.save(a); });
+def('vault_get', 'اقرأ بيانات وثيقة من الخزنة — فقط لما يطلب المالك نفسه (مثلاً «وش رقم جوازي؟» أو تحتاجها لتعبئة حجز له). لا تشاركها مع أي أحد ثاني إلا إذا طلب المالك صراحة.',
+  S({ label: str('اسم الوثيقة (اختياري)'), holder: str('صاحبها (اختياري)') }), async (a, ctx) => { ownerOnly(ctx); return V.get(a); });
+def('vault_list', 'وش الوثائق المحفوظة في الخزنة (الأسماء فقط بدون البيانات).', S({}), async () => V.list());
+def('vault_delete', 'احذف وثيقة من الخزنة.', S({ id: int('رقمها') }, ['id']), async ({ id }, ctx) => { ownerOnly(ctx); return V.remove(id); });
 
 // ---------- المناسبات ----------
 def('save_occasion', 'سجّل مناسبة سنوية (عيد ميلاد، ذكرى زواج، تخرج...). أذكّرك قبلها بأسبوع ويومها.',

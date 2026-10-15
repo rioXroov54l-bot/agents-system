@@ -24,7 +24,7 @@ const AGENTS = {
 - جهات الاتصال: احفظ أي شخص يذكره مع علاقته وتفاصيله.
 - الوثائق المهمة: سجّل تواريخ انتهاء الجواز/الإقامة/الرخصة/الاستمارة/التأمين واشرح طريقة التجديد (أبشر، ناجز، توكلنا...).
 - المناسبات: سجّل أعياد الميلاد والذكريات واقترح هدايا مناسبة بروابط.`,
-    tools: [...SHARED, 'agenda', 'add_appointment', 'move_appointment', 'cancel_appointment', 'update_my_settings', 'prepare_payment', 'mark_paid', 'list_pending_payments', 'booking_links', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'gmail_send', 'gmail_reply', 'gmail_draft', 'gmail_manage', 'google_calendar', 'calendar_add', 'calendar_edit', 'calendar_remove', 'calendar_free_time', 'send_email', 'send_whatsapp', 'schedule_message', 'list_scheduled', 'cancel_scheduled', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'weather', 'prayer_times', 'convert_date', 'save_contact', 'save_document', 'list_documents', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
+    tools: [...SHARED, 'agenda', 'add_appointment', 'move_appointment', 'cancel_appointment', 'update_my_settings', 'prepare_payment', 'mark_paid', 'list_pending_payments', 'booking_links', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'gmail_send', 'gmail_reply', 'gmail_draft', 'gmail_manage', 'google_calendar', 'calendar_add', 'calendar_edit', 'calendar_remove', 'calendar_free_time', 'send_email', 'send_whatsapp', 'schedule_message', 'list_scheduled', 'cancel_scheduled', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'weather', 'prayer_times', 'convert_date', 'save_contact', 'save_document', 'list_documents', 'vault_save', 'vault_get', 'vault_list', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
   },
   travel: {
     name: 'وكيل السفر والحجوزات', icon: '✈️', web: true,
@@ -36,7 +36,7 @@ const AGENTS = {
 - **الدفع بضغطة:** لما يقول المالك «احجزها/احجز لي» أو يختار خيار، أو طلب منك تحجز مباشرة وكل المعطيات واضحة (الوجهة والتاريخ): اختر الأنسب واستدعِ prepare_payment بكل التفاصيل (flights بأوقاتها، hotel، السعر، الرابط). المالك يدفع بنفسه بضغطة، والنظام يثبت الباقي تلقائياً من إيميل التأكيد. لا تدّعي أنك دفعت أو حجزت.
 - إذا ناقص معلومة أساسية (التاريخ مثلاً) اسأل سؤال واحد مختصر، وافترض الباقي بذكاء: شخص واحد، اقتصادي، ذهاب فقط إذا ما ذكر عودة، أي وقت مناسب.
 - مطار المالك الافتراضي من ملفه الشخصي.`,
-    tools: [...SHARED, 'plan_trip', 'save_trip_options', 'confirm_trip', 'list_trips', 'add_appointment', 'agenda', 'list_documents', 'weather', 'currency_convert', 'convert_date', 'calendar_add', 'calendar_free_time', 'prayer_times', 'booking_links', 'prepare_payment', 'mark_paid', 'list_pending_payments']
+    tools: [...SHARED, 'plan_trip', 'save_trip_options', 'confirm_trip', 'list_trips', 'add_appointment', 'agenda', 'list_documents', 'weather', 'currency_convert', 'convert_date', 'calendar_add', 'calendar_free_time', 'prayer_times', 'booking_links', 'prepare_payment', 'mark_paid', 'list_pending_payments', 'vault_get']
   },
   money: {
     name: 'وكيل المالية الشخصية', icon: '💰', web: true,
@@ -104,7 +104,8 @@ ${knowledge.map(k => `- [${k.kind}] ${k.text}`).join('\n') || '—'}
 - **رد على آخر رسالة فقط.** الرسائل السابقة سياق؛ لا تعيد تقرير مهام قديمة ولا تنفذها من جديد إلا إذا طلبها المالك الحين.
 - أي معلومة شخصية مفيدة يذكرها المالك (تفضيل، شخص، تاريخ مهم) احفظها بـ remember أو الأداة المناسبة.
 - لا تخترع أسعاراً أو مواعيد أو معلومات؛ ابحث أو اسأل سؤالاً واحداً واضحاً.
-- ممنوع نهائياً: الدفع أو التحويل أو الشراء الفعلي بنفسك، طلب أو حفظ كلمات السر أو أرقام البطاقات أو رموز التحقق OTP أو أرقام الهوية/الجواز. الدفع دائماً من المالك بضغطة عبر prepare_payment.
+- ممنوع نهائياً: الدفع أو التحويل أو الشراء الفعلي بنفسك، طلب أو حفظ كلمات السر أو أرقام البطاقات أو رموز التحقق OTP. الدفع دائماً من المالك بضغطة عبر prepare_payment.
+- بيانات الوثائق (رقم الجواز/الهوية/الإقامة/الرخصة...) تنحفظ فقط في الخزنة المشفرة (vault_save) بطلب المالك، وتقراها (vault_get) فقط لما يطلبها هو أو لتجهيز حجز له. لا تكتبها في الملاحظات أو الذاكرة، ولا تشاركها مع أي أحد إلا بطلبه الصريح.
 - اكتب بالعربي بلهجة سعودية مهذبة واحترافية، كأنك سكرتير تنفيذي خبير. **عريض** للعناوين والأرقام المهمة. الروابط كاملة.
 - **الأسلوب الاحترافي:**
   • ابدأ بسطر يلخص النتيجة (✅ تم / ⏳ جاري / ⚠️ يحتاج قرار).
@@ -190,7 +191,7 @@ async function runManager(text, { attachments = [], channel = 'dashboard', progr
 • **الدفع بضغطة** prepare_payment: لأي حجز/شراء/طلب/فاتورة يقرره المالك — جهز الخيار وأرسل له بطاقة دفع برابط مباشر، يدفع بنفسه بضغطة وبصمة، والنظام يثبت الحجز تلقائياً من إيميل التأكيد. («احجز لي رحلة جدة» = ابحث وجهز الدفع، مو بس تعطيه خيارات.)
 واتساب للناس: send_whatsapp يرسل من رقم السكرتير ويراقب الرد تلقائياً. لو قال المالك "إذا رد فلان بلغني" استخدم watch_whatsapp — الردود توصل له فوراً، فلا تقل إنك ما تقدر تراقب.
 الإيميل والتقويم: لقراءة إيميلات المالك استخدم gmail_search (لحظي من Gmail) ثم gmail_read للتفاصيل، ولتقويم Google استخدم google_calendar.
-المرفقات: صورة فاتورة/إيصال ← سجّلها مصروف. صورة رسالة بنك ← record_bank_message. صورة بطاقة/رقم ← جهة اتصال. صورة وثيقة (جواز/رخصة/استمارة) ← سجّل اسمها وتاريخ انتهائها فقط بدون أرقامها. مستند/PDF ← لخصه ونفّذ المطلوب. صورة منتج ← ابحث عنه وقارن أسعاره.
+المرفقات: صورة فاتورة/إيصال ← سجّلها مصروف. صورة رسالة بنك ← record_bank_message. صورة بطاقة/رقم ← جهة اتصال. صورة وثيقة (جواز/هوية/رخصة/استمارة) ← سجّل اسمها وتاريخ انتهائها بـ save_document، وإذا طلب المالك حفظ بياناتها احفظها كاملة في الخزنة بـ vault_save (رقمها، الاسم بالإنجليزي كما فيها، الجنسية، الميلاد، الإصدار والانتهاء). مستند/PDF ← لخصه ونفّذ المطلوب. صورة منتج ← ابحث عنه وقارن أسعاره.
 
 ${await companyContext()}`;
   const content = attachments.length ? [...attachments, { type: 'text', text: text || 'تعامل مع المرفق' }] : text;

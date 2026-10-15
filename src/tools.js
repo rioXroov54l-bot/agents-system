@@ -145,6 +145,11 @@ async function appendConversation(phone, name, role, text) {
 
 // تنفيذ إجراء خارجي: يفحص الجودة والصلاحية، وإما ينفذ أو يطلب موافقة
 async function guardedExternal(kind, payload, { text, purpose, amount = 0 }) {
+  // حماية الخزنة: أي إرسال تلقائي فيه رقم جواز/هوية من الخزنة يتوقف
+  if (text && await require('./vault').containsSecret(text).catch(() => false)) {
+    await ch.notifyOwner(`⛔ **وقفت رسالة** (${purpose}) لأنها فيها بيانات من خزنتك (رقم وثيقة). إذا تبي ترسلها، اطلبها مني بنفسك.`);
+    return '⛔ ما انرسلت: فيها بيانات حساسة من الخزنة، وتبلغ المالك.';
+  }
   const reason = await needsApproval({ external: true, amount });
   if (!reason && text) {
     const qa = await qaOutbound(text, purpose);
