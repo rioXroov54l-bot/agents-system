@@ -250,4 +250,38 @@ async function assets() {
 
 const watches = () => require('./pricewatch').quick();
 
-module.exports = { watches, docs, meds, portfolio, assets, routines, payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };
+// فحص شامل لحالة كل أجزاء النظام
+async function status() {
+  const os = require('os'), fs = require('fs'), ch = require('./channels');
+  const t = (p, ms = 4000) => Promise.race([p, new Promise(r => setTimeout(() => r('timeout'), ms))]).catch(e => 'ERR ' + e.message);
+  const [dbOk, wa, g, vLocal, n8nOk, tgInfo] = await Promise.all([
+    t(db.one('SELECT 1 AS ok').then(() => true)),
+    t(ch.evoStatus()),
+    t(require('./google').status()),
+    t(require('./voice').localReady()),
+    t(fetch((process.env.N8N_WEBHOOK_URL || '').replace(/\/webhook\/.*$/, '') + '/healthz', { signal: AbortSignal.timeout(3000) }).then(r => r.ok).catch(() => false)),
+    t(ch.tgEnabled() ? ch.tg('getWebhookInfo', {}) : Promise.resolve(null))
+  ]);
+  const s = await db.getSettings();
+  const ok = v => v === true ? '✅' : '❌';
+  let build = ''; try { build = fs.readFileSync(require('path').join(__dirname, '..', '.build'), 'utf8').trim(); } catch (_) {}
+  const mem = os.totalmem(), free = os.freemem(), load = os.loadavg()[0];
+  let disk = ''; try { const st = fs.statfsSync('/'); disk = Math.round(st.bavail * st.bsize / 1e9) + ' GB فاضية'; } catch (_) {}
+  const counts = await db.one(`SELECT (SELECT count(*) FROM reminders WHERE NOT done) AS rem, (SELECT count(*) FROM scheduled_messages WHERE status='pending') AS sched,
+    (SELECT count(*) FROM price_watches WHERE active) AS watch, (SELECT count(*) FROM routines WHERE active) AS rout, (SELECT count(*) FROM medications WHERE active) AS meds`).catch(() => ({}));
+  const L = ['🩺 **حالة النظام**', ''];
+  L.push(`${ok(dbOk)} قاعدة البيانات`);
+  L.push(`${wa && wa.connected ? '✅' : '❌'} واتساب السكرتير${wa && wa.state ? ' (' + wa.state + ')' : ''}`);
+  L.push(`${ch.tgEnabled() ? (await ch.ownerTelegramId() ? '✅' : '⚠️') : '❌'} تيليجرام${tgInfo && tgInfo.last_error_message ? ' — آخر خطأ: ' + tgInfo.last_error_message.slice(0, 60) : ''}`);
+  L.push(`${g && g.gmail ? '✅' : '❌'} Gmail | ${g && g.calendar ? '✅' : '❌'} تقويم Google`);
+  L.push(`${vLocal === true ? '✅' : (process.env.GROQ_API_KEY || s.groq_key) ? '✅' : process.env.WHISPER_URL ? '⏳' : '❌'} الرسائل الصوتية${vLocal === true ? ' (على السيرفر)' : (process.env.GROQ_API_KEY || s.groq_key) ? ' (Groq)' : process.env.WHISPER_URL ? ' (المحرك لسا يتجهز)' : ''}`);
+  L.push(`${ok(n8nOk)} n8n`);
+  L.push('', `⚙️ آخر تحديث للسكرتير: ${build ? U.fmt(build) : '—'}`, `⏱️ شغال من: ${Math.round(process.uptime() / 3600 * 10) / 10} ساعة`,
+    `🧠 الذاكرة: ${Math.round((mem - free) / 1e9 * 10) / 10}/${Math.round(mem / 1e9 * 10) / 10} GB | الضغط: ${load.toFixed(2)}${disk ? ' | 💾 ' + disk : ''}`,
+    '', `📌 تذكيرات: ${counts.rem || 0} | رسائل مجدولة: ${counts.sched || 0} | متابعات أسعار: ${counts.watch || 0} | مهام متكررة: ${counts.rout || 0} | أدوية: ${counts.meds || 0}`);
+  const fails = await db.many("SELECT text, at FROM activity WHERE type IN ('voice','notify') ORDER BY id DESC LIMIT 3").catch(() => []);
+  if (fails.length) L.push('', '🧾 **آخر مشاكل:**', ...fails.map(f => `• ${U.fmt(f.at).slice(5)} ${f.text.slice(0, 100)}`));
+  return L.join('\n');
+}
+
+module.exports = { status, watches, docs, meds, portfolio, assets, routines, payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };

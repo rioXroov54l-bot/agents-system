@@ -96,11 +96,13 @@ async function handleUpdate(u) {
   if ((m.voice || m.audio || m.video_note) && !text) {
     const media = m.voice || m.audio || m.video_note;
     ch.tg('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
+    const keep = setInterval(() => ch.tg('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {}), 5000);
     try {
       if (media.file_size > 20e6) throw new Error('طويلة جداً');
       const f = await downloadFile(media.file_id);
       text = await require('./voice').transcribe(f.data, media.mime_type || (m.video_note ? 'video/mp4' : 'audio/ogg'));
-    } catch (e) { return ch.tgSend(chatId, '🎙️ ما قدرت أفهم الرسالة الصوتية (' + e.message.slice(0, 80) + '). اكتبها لي أو جرب مرة ثانية.'); }
+    } catch (e) { db.log('voice', '🎙️ فشل فهم الصوت: ' + e.message.slice(0, 120)).catch(() => {}); return ch.tgSend(chatId, '🎙️ ما قدرت أفهم الرسالة الصوتية (' + e.message.slice(0, 80) + '). اكتبها لي أو جرب مرة ثانية.'); }
+    finally { clearInterval(keep); }
     await ch.tgSend(chatId, `🎙️ سمعتك: «${text}»`);
     const q2 = M.matchQuick(text);
     if (q2 === 'menu') return sendMenu(chatId);

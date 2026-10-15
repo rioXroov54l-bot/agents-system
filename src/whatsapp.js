@@ -39,8 +39,11 @@ async function handleOwner(num, { text, attachment, voice, audio }) {
   if (voice && !text) {
     if (!audio) return reply('🎙️ ما وصلني الصوت كامل، أرسله مرة ثانية أو اكتبه.');
     typing(num);
+    const keep = setInterval(() => typing(num), 6000);
+    const slow = setTimeout(() => reply('🎙️ وصلتني رسالتك، ثواني وأسمعها…').catch(() => {}), 12000);
     try { text = await require('./voice').transcribe(audio.data, audio.mime); }
-    catch (e) { return reply('🎙️ ما قدرت أفهم الرسالة الصوتية (' + e.message.slice(0, 80) + '). اكتبها لي أو جرب مرة ثانية.'); }
+    catch (e) { db.log('voice', '🎙️ فشل فهم الصوت: ' + e.message.slice(0, 120)).catch(() => {}); return reply('🎙️ ما قدرت أفهم الرسالة الصوتية (' + e.message.slice(0, 80) + '). اكتبها لي أو جرب مرة ثانية.'); }
+    finally { clearInterval(keep); clearTimeout(slow); }
     await reply(`🎙️ سمعتك: «${text}»`);
   }
   const t = text;
