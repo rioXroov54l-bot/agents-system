@@ -67,6 +67,10 @@ CREATE TABLE IF NOT EXISTS appointments (
   customer_id int, location text, notes text, gcal_id text, reminded boolean DEFAULT false,
   created_at timestamptz DEFAULT now());
 
+CREATE TABLE IF NOT EXISTS routines (
+  id serial PRIMARY KEY, title text NOT NULL, prompt text NOT NULL, at timestamptz NOT NULL, repeat text DEFAULT 'daily',
+  active boolean DEFAULT true, last_run timestamptz, last_result text, created_at timestamptz DEFAULT now());
+
 CREATE TABLE IF NOT EXISTS vault (
   id serial PRIMARY KEY, label text NOT NULL, holder text DEFAULT 'أنا', data text NOT NULL,
   created_at timestamptz DEFAULT now(), updated_at timestamptz DEFAULT now(), UNIQUE (label, holder));
@@ -138,6 +142,7 @@ CREATE TABLE IF NOT EXISTS documents (
 CREATE TABLE IF NOT EXISTS occasions (
   id serial PRIMARY KEY, person text NOT NULL, type text DEFAULT 'birthday', month int NOT NULL, day int NOT NULL,
   year int, notes text, notified jsonb DEFAULT '[]', created_at timestamptz DEFAULT now());
+ALTER TABLE occasions ADD COLUMN IF NOT EXISTS phone text;
 
 CREATE TABLE IF NOT EXISTS goals (
   id serial PRIMARY KEY, title text NOT NULL, why text, target numeric, unit text, period text DEFAULT 'once',

@@ -78,6 +78,7 @@ services:
       INTERNAL_URL: http://agents:3000
       N8N_WEBHOOK_URL: http://n8n:5678/webhook/agents
       EVOLUTION_URL: http://evolution:8080
+      WHISPER_URL: http://whisper:9000
       DATA_DIR: /data
       TZ: Asia/Riyadh
     volumes: [agents_data:/data]
@@ -147,6 +148,16 @@ services:
       postgres: { condition: service_healthy }
       redis: { condition: service_healthy }
 
+  # تحويل الرسائل الصوتية لنص (Whisper على نفس السيرفر — بدون أي اشتراك)
+  whisper:
+    image: ${WHISPER_IMAGE:-onerahmet/openai-whisper-asr-webservice:latest}
+    restart: unless-stopped
+    environment:
+      ASR_ENGINE: faster_whisper
+      ASR_MODEL: ${WHISPER_MODEL:-small}
+      ASR_MODEL_PATH: /data/whisper
+    volumes: [whisper_models:/data/whisper]
+
   uptime-kuma:
     image: louislam/uptime-kuma:2
     restart: unless-stopped
@@ -163,3 +174,4 @@ volumes:
   n8n_data:
   evolution_instances:
   kuma_data:
+  whisper_models:

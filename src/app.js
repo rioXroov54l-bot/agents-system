@@ -278,7 +278,7 @@ app.post('/api/simulate', wrap(async (req, res) => {
 // الإعدادات
 app.get('/api/settings', wrap(async (_req, res) => {
   const s = await db.getSettings();
-  res.json({ notify_channel: s.notify_channel || 'auto', reply_others: !!s.reply_others, forward_others: s.forward_others !== false, profile: s.profile, budgets: s.budgets, autonomy: s.autonomy, report_hour: s.report_hour, morning_hour: s.morning_hour, weekly_review: s.weekly_review, company: s.company });
+  res.json({ notify_channel: s.notify_channel || 'auto', voice: { local: !!process.env.WHISPER_URL, groq: !!(process.env.GROQ_API_KEY || s.groq_key) }, prayer_alerts: Number(s.prayer_alerts || 0), reply_others: !!s.reply_others, forward_others: s.forward_others !== false, profile: s.profile, budgets: s.budgets, autonomy: s.autonomy, report_hour: s.report_hour, morning_hour: s.morning_hour, weekly_review: s.weekly_review, company: s.company });
 }));
 app.get('/api/whatsapp', wrap(async (_req, res) => res.json({ ...(await ch.evoStatus()), owner_phone: C.OWNER_PHONE ? '…' + C.OWNER_PHONE.slice(-4) : null }))); 
 app.get('/api/whatsapp/qr', wrap(async (_req, res) => res.json(await ch.evoQR())));
@@ -343,7 +343,7 @@ app.post('/api/admin/export', wrap(async (req, res) => {
 app.post('/api/bills/:id/pay', wrap(async (req, res) => res.json({ message: await T.pay_bill.handler({ id: Number(req.params.id), amount: req.body.amount }) })));
 app.post('/api/shortcut/rotate', wrap(async (_req, res) => { await db.setSetting('shortcut_token', crypto.randomBytes(18).toString('hex')); res.json({ url: `${C.PUBLIC_URL}/hook/${await shortcutToken()}` }); }));
 app.post('/api/settings', wrap(async (req, res) => {
-  const allowed = ['profile', 'budgets', 'autonomy', 'report_hour', 'morning_hour', 'weekly_review', 'company', 'notify_channel', 'reply_others', 'forward_others', 'watch_ack'];
+  const allowed = ['profile', 'budgets', 'autonomy', 'report_hour', 'morning_hour', 'weekly_review', 'company', 'notify_channel', 'reply_others', 'forward_others', 'watch_ack', 'groq_key', 'prayer_alerts'];
   for (const k of allowed) if (req.body[k] !== undefined) await db.setSetting(k, req.body[k]);
   await db.log('settings', 'تحديث الإعدادات');
   res.json({ message: '✅ انحفظت الإعدادات' });

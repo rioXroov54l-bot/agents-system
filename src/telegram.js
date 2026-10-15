@@ -40,7 +40,7 @@ async function handleUpdate(u) {
   if (!m || !m.chat) return;
   const chatId = String(m.chat.id);
   const ownerId = await ch.ownerTelegramId();
-  const text = (m.text || m.caption || '').trim();
+  let text = (m.text || m.caption || '').trim();
 
   // ربط الحساب
   if (/^\/start\b/.test(text)) {
@@ -93,7 +93,21 @@ async function handleUpdate(u) {
   const payReply = await require('./pay').handleOwnerText(text).catch(e => '⚠️ ' + e.message);
   if (payReply) return ch.tgSend(chatId, payReply);
 
-  if (m.voice || m.audio || m.video_note) return ch.tgSend(chatId, '🎙️ الرسائل الصوتية ما أقدر أفهمها للحين. اكتبها لي نص (أو استخدم إملاء الكيبورد في الجوال).');
+  if ((m.voice || m.audio || m.video_note) && !text) {
+    const media = m.voice || m.audio || m.video_note;
+    ch.tg('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
+    try {
+      if (media.file_size > 20e6) throw new Error('طويلة جداً');
+      const f = await downloadFile(media.file_id);
+      text = await require('./voice').transcribe(f.data, media.mime_type || (m.video_note ? 'video/mp4' : 'audio/ogg'));
+    } catch (e) { return ch.tgSend(chatId, '🎙️ ما قدرت أفهم الرسالة الصوتية (' + e.message.slice(0, 80) + '). اكتبها لي أو جرب مرة ثانية.'); }
+    await ch.tgSend(chatId, `🎙️ سمعتك: «${text}»`);
+    const q2 = M.matchQuick(text);
+    if (q2 === 'menu') return sendMenu(chatId);
+    if (q2) return ch.tgSend(chatId, await quick[q2]());
+    const pr = await require('./pay').handleOwnerText(text).catch(() => null);
+    if (pr) return ch.tgSend(chatId, pr);
+  }
 
   // مرفقات: صور ومستندات PDF
   const attachments = [];
@@ -130,6 +144,12 @@ async function handleCallback(cq) {
   const chatId = String(cq.message && cq.message.chat.id);
   const ownerId = await ch.ownerTelegramId();
   const [kind, id, action] = String(cq.data || '').split(':');
+  if (kind === 'fu') {
+    await ch.tg('answerCallbackQuery', { callback_query_id: cq.id }).catch(() => {});
+    if (chatId !== ownerId) return;
+    await ch.tg('editMessageReplyMarkup', { chat_id: chatId, message_id: cq.message.message_id, reply_markup: { inline_keyboard: [] } }).catch(() => {});
+    return ch.tgSend(chatId, action === 'send' ? await require('./extras').sendFollowup(id).catch(e => '⚠️ ' + e.message) : '👍 تمام، ما راح أذكره.');
+  }
   if (kind === 'pay') {
     await ch.tg('answerCallbackQuery', { callback_query_id: cq.id }).catch(() => {});
     if (chatId !== ownerId) return;

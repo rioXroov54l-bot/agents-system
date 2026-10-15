@@ -24,17 +24,25 @@ function extract(msg) {
   if (m.imageMessage && b64) attachment = { type: 'image', source: { type: 'base64', media_type: /png/.test(m.imageMessage.mimetype || '') ? 'image/png' : 'image/jpeg', data: b64 } };
   const doc = m.documentMessage || (m.documentWithCaptionMessage && m.documentWithCaptionMessage.message && m.documentWithCaptionMessage.message.documentMessage);
   if (doc && b64 && /pdf/.test(doc.mimetype || '')) attachment = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } };
-  const voice = !!(m.audioMessage || m.pttMessage);
-  return { text: String(text).trim(), attachment, voice, kind };
+  const au = m.audioMessage || m.pttMessage;
+  const voice = !!au;
+  const audio = au && b64 ? { data: b64, mime: au.mimetype || 'audio/ogg' } : null;
+  return { text: String(text).trim(), attachment, voice, audio, kind };
 }
 
 async function typing(num) {
   ch.evo('POST', `/chat/sendPresence/${C.EVOLUTION_INSTANCE}`, { number: num, presence: 'composing', delay: 3000 }).catch(() => {});
 }
 
-async function handleOwner(num, { text, attachment, voice }) {
+async function handleOwner(num, { text, attachment, voice, audio }) {
   const reply = t => ch.sendWhatsApp(num, t);
-  if (voice && !text) return reply('🎙️ الرسائل الصوتية ما أقدر أسمعها للحين. اكتبها لي، أو استخدم إملاء الكيبورد 🎤');
+  if (voice && !text) {
+    if (!audio) return reply('🎙️ ما وصلني الصوت كامل، أرسله مرة ثانية أو اكتبه.');
+    typing(num);
+    try { text = await require('./voice').transcribe(audio.data, audio.mime); }
+    catch (e) { return reply('🎙️ ما قدرت أفهم الرسالة الصوتية (' + e.message.slice(0, 80) + '). اكتبها لي أو جرب مرة ثانية.'); }
+    await reply(`🎙️ سمعتك: «${text}»`);
+  }
   const t = text;
   const qcmd = M.matchQuick(t);
   if (qcmd === 'menu') { lastMenu = Date.now(); return reply(M.whatsappMenu()); }
@@ -103,12 +111,15 @@ async function handleEvolution(body) {
     const watched = await W.get(num), st = await db.getSettings();
     // شخص تحت المراقبة، أو وضع «أبلغني برسائل الناس»: نوصّل رسالته للمالك ولا نرد عليه
     if (watched || (!st.reply_others && st.forward_others !== false)) {
-      const what = parsed.text || (parsed.attachment ? (parsed.attachment.type === 'image' ? '[صورة]' : '[مستند]') : parsed.voice ? '[رسالة صوتية]' : `[${parsed.kind}]`);
+      let heard = '';
+      if (!parsed.text && parsed.audio) heard = await require('./voice').transcribe(parsed.audio.data, parsed.audio.mime).catch(() => '');
+      const what = parsed.text || (heard ? `🎙️ (رسالة صوتية) «${heard}»` : parsed.attachment ? (parsed.attachment.type === 'image' ? '[صورة]' : '[مستند]') : parsed.voice ? '[رسالة صوتية]' : `[${parsed.kind}]`);
       const who = msg.pushName || (watched && watched.name) || num;
       const note = watched
         ? `📩 **رد من ${who}** (${num})${watched.note ? '\n📝 ' + watched.note : ''}\n\n${what}`
         : `📨 **رسالة لرقم السكرتير من ${who}** (${num})\n\n${what}\n\n(ما رديت عليه. قل لي «رد عليه ...» إذا تبي أرد)`;
       await appendConversation(num, msg.pushName, 'customer', what).catch(() => {});
+      if (watched) await W.update(num, { last_in: new Date().toISOString() }).catch(() => {});
       // اللي راسلناهم: نرد عليهم بشكر مهذب (مرة لكل رسالة نرسلها لهم، أو كل 3 ساعات) ونبلغهم إن ردهم بيوصل
       let ack = '';
       if (watched && st.watch_ack !== false) {

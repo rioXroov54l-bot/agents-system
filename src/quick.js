@@ -211,4 +211,11 @@ async function payments() {
   return L.join('\n\n');
 }
 
-module.exports = { payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };
+async function routines() {
+  const rs = await db.many('SELECT id, title, at, repeat, active, last_run FROM routines ORDER BY active DESC, at LIMIT 30').catch(() => []);
+  if (!rs.length) return '🔁 ما عندك مهام متكررة.\n\n💬 «كل يوم 8 الصبح أرسل لي أهم الأخبار»';
+  const R = { daily: 'يومي', weekdays: 'أيام الدوام', weekly: 'أسبوعي', monthly: 'شهري' };
+  return '🔁 **مهامك الذكية المتكررة**\n\n' + rs.map(r => `**#${r.id}** ${r.active ? '' : '⏸️ '}${r.title}\n${R[r.repeat] || r.repeat} — الجاية: ${U.fmt(r.at)}${r.last_run ? ' | آخر مرة: ' + U.fmt(r.last_run) : ''}`).join('\n\n') + '\n\n💬 «احذف المهمة رقم ...» أو «شغّل المهمة رقم ... الحين»';
+}
+
+module.exports = { routines, payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };

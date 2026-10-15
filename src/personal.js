@@ -100,9 +100,9 @@ def('vault_list', 'وش الوثائق المحفوظة في الخزنة (ال�
 def('vault_delete', 'احذف وثيقة من الخزنة.', S({ id: int('رقمها') }, ['id']), async ({ id }, ctx) => { ownerOnly(ctx); return V.remove(id); });
 
 // ---------- المناسبات ----------
-def('save_occasion', 'سجّل مناسبة سنوية (عيد ميلاد، ذكرى زواج، تخرج...). أذكّرك قبلها بأسبوع ويومها.',
-  S({ id: int('للتحديث'), person: str('الشخص'), type: str('birthday | anniversary | other'), month: int('الشهر الميلادي 1-12'), day: int('اليوم'), year: int('السنة (اختياري لحساب العمر)'), notes: str('ملاحظات: اهتماماته، أفكار هدايا') }),
-  async (a) => a.id ? db.update('occasions', a.id, a, ['person', 'type', 'month', 'day', 'year', 'notes']) : db.insert('occasions', a, ['person', 'type', 'month', 'day', 'year', 'notes']));
+def('save_occasion', 'سجّل مناسبة سنوية (عيد ميلاد، ذكرى زواج، تخرج...). أذكّرك قبلها بأسبوع ويومها، ويومها أجهز تهنئة ترسلها بضغطة (إذا فيه رقمه).',
+  S({ id: int('للتحديث'), person: str('الشخص'), type: str('birthday | anniversary | other'), month: int('الشهر الميلادي 1-12'), day: int('اليوم'), year: int('السنة (اختياري لحساب العمر)'), phone: str('رقم واتسابه (اختياري، للتهنئة)'), notes: str('ملاحظات: اهتماماته، أفكار هدايا') }),
+  async (a) => { const x = { ...a }; if (a.phone) x.phone = ch.saNumber(a.phone); const cols = ['person', 'type', 'month', 'day', 'year', 'phone', 'notes']; return a.id ? db.update('occasions', a.id, x, cols) : db.insert('occasions', x, cols); });
 def('upcoming_occasions', 'المناسبات القادمة خلال عدد أيام.', S({ days: int('افتراضي 30') }),
   async ({ days = 30 }) => {
     const rows = await db.many('SELECT * FROM occasions');

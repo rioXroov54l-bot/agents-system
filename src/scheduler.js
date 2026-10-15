@@ -42,6 +42,9 @@ async function tick() {
     const dow = U.riyadh().getUTCDay(); // 0 = الأحد
     const { T } = require('./tools');
 
+    // 0-ب) المهام المتكررة، متابعة اللي ما ردوا، تنبيه الصلاة
+    await require('./extras').tick(s).catch(e => console.error('extras', e.message));
+
     // 0-أ) إيميلات تأكيد الدفع (كل 5 دقايق إذا فيه طلبات دفع مفتوحة)
     await require('./pay').scanConfirmations().catch(e => console.error('pay scan', e.message));
 
@@ -120,7 +123,8 @@ async function tick() {
         if (sent.includes(key)) continue;
         await db.q('UPDATE occasions SET notified=$2 WHERE id=$1', [o.id, JSON.stringify([...sent.slice(-10), key])]);
         const label = o.type === 'birthday' ? 'عيد ميلاد' : o.type === 'anniversary' ? 'ذكرى' : 'مناسبة';
-        await ch.notifyOwner(o.days_left === 0 ? `🎉 **اليوم ${label} ${o.person}**${o.age ? ' (' + o.age + ')' : ''}! لا تنسى تتصل/ترسل له.` : `🎂 **${label} ${o.person}** بعد ${o.days_left} ${o.days_left === 1 ? 'يوم (بكرة!)' : 'أيام'}${o.notes ? '\n💡 ' + o.notes : ''}\nتبيني أقترح هدايا وأماكن؟`);
+        if (o.days_left === 0) { const full = await db.one('SELECT phone FROM occasions WHERE id=$1', [o.id]).catch(() => null); await require('./extras').occasionGreeting({ ...o, phone: full && full.phone }).catch(e => console.error('greeting', e.message)); }
+        else await ch.notifyOwner(`🎂 **${label} ${o.person}** بعد ${o.days_left} ${o.days_left === 1 ? 'يوم (بكرة!)' : 'أيام'}${o.notes ? '\n💡 ' + o.notes : ''}\nتبيني أقترح هدايا وأماكن؟`);
       }
     }
 

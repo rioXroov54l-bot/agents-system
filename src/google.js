@@ -144,6 +144,27 @@ async function gmailModify({ ids, action }) {
   return { ok: true, action, count: list.length };
 }
 
+// تنظيف جماعي: يطبق إجراء على كل الإيميلات المطابقة لبحث (حتى 500)
+async function gmailBulk({ query, action, max = 300 }) {
+  if (!query) throw new Error('لازم صيغة بحث');
+  const limit = Math.min(Number(max) || 300, 500), ids = [];
+  let pageToken = '';
+  while (ids.length < limit) {
+    const r = await gget('gmail', `${GMAIL}/messages?maxResults=${Math.min(500, limit - ids.length)}&q=${encodeURIComponent(query)}${pageToken ? '&pageToken=' + pageToken : ''}`);
+    ids.push(...(r.messages || []).map(m => m.id));
+    if (!r.nextPageToken || !(r.messages || []).length) break;
+    pageToken = r.nextPageToken;
+  }
+  if (!ids.length) return { ok: true, action, count: 0, query };
+  if (action === 'trash') {
+    for (let i = 0; i < ids.length; i += 10) await Promise.all(ids.slice(i, i + 10).map(id => greq('gmail', 'POST', `${GMAIL}/messages/${id}/trash`).catch(() => null)));
+  } else {
+    if (!MODS[action]) throw new Error('إجراء غير معروف');
+    for (let i = 0; i < ids.length; i += 1000) await greq('gmail', 'POST', `${GMAIL}/messages/batchModify`, { ids: ids.slice(i, i + 1000), ...MODS[action] });
+  }
+  return { ok: true, action, count: ids.length, query, more_may_exist: ids.length >= limit };
+}
+
 // ---------- التقويم: إضافة وتعديل وحذف وأوقات فاضية ----------
 const TZ = 'Asia/Riyadh';
 const isoLocal = d => new Date(new Date(d).getTime() + 3 * 3600e3).toISOString().slice(0, 19); // بتوقيت الرياض بدون Z
@@ -201,4 +222,4 @@ async function status() {
   return out;
 }
 
-module.exports = { gmailSearch, gmailRead, gmailSend, gmailReply, gmailDraft, gmailModify, calendarEvents, calendarCreate, calendarUpdate, calendarDelete, calendarFree, status, n8nDecrypt, n8nEncrypt };
+module.exports = { gmailSearch, gmailRead, gmailSend, gmailReply, gmailDraft, gmailModify, gmailBulk, calendarEvents, calendarCreate, calendarUpdate, calendarDelete, calendarFree, status, n8nDecrypt, n8nEncrypt };
