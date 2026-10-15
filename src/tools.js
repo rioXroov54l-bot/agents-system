@@ -453,8 +453,59 @@ def('unwatch_whatsapp', 'أوقف مراقبة رسائل شخص.', S({ phone: s
   async ({ phone }) => { await require('./watch').remove(phone); return `✅ وقفت مراقبة ${phone}`; });
 def('list_watched', 'الأشخاص اللي تحت المراقبة (ردودهم توصل للمالك).', S({}), async () => Object.values(await require('./watch').all()));
 
-// ---------- Gmail وتقويم Google (قراءة مباشرة) ----------
 const G = require('./google');
+// ---------- رسائل مجدولة ----------
+def('schedule_message', 'جدول رسالة واتساب (أو إيميل) تنرسل تلقائياً في وقت محدد بالضبط — حتى لو المالك نايم. مثال: «أرسل له الساعة 4:30 الفجر». تقدر تخليها تتكرر (يومي/أسبوعي...). بعد الإرسال يتبلغ المالك ويوصله أي رد.',
+  S({ to: str('رقم الجوال (05xxxxxxxx) أو الإيميل'), text: str('نص الرسالة كامل'), at: str('وقت الإرسال YYYY-MM-DD HH:mm بتوقيت الرياض'), channel: str('whatsapp (افتراضي) أو email'), subject: str('عنوان الإيميل (للإيميل فقط)'), name: str('اسم المستلم (اختياري)'), repeat: str('none | daily | weekdays | weekly | monthly | yearly') }, ['to', 'text', 'at']),
+  async (a) => {
+    const at = U.parseLocal(a.at);
+    if (!at || isNaN(new Date(at))) throw new Error('الوقت غير صحيح، اكتبه YYYY-MM-DD HH:mm');
+    if (new Date(at) < new Date(Date.now() - 6e4)) throw new Error(`الوقت ${a.at} فات. الوقت الحين ${U.riyadhNow()}`);
+    const channel = a.channel === 'email' || /@/.test(a.to) ? 'email' : 'whatsapp';
+    const r = await db.insert('scheduled_messages', { channel, recipient: channel === 'email' ? a.to.trim() : ch.saNumber(a.to), name: a.name, subject: a.subject, text: a.text, at, repeat: a.repeat || 'none' },
+      ['channel', 'recipient', 'name', 'subject', 'text', 'at', 'repeat']);
+    await db.log('scheduled', `جدولت رسالة #${r.id} إلى ${a.to} ${U.fmt(at)}`);
+    return `✅ انجدولت الرسالة #${r.id}: بتنرسل ${channel === 'email' ? 'بالإيميل' : 'على واتساب'} إلى ${a.to} يوم ${U.fmt(at)} تلقائياً${a.repeat && a.repeat !== 'none' ? ' (وتتكرر ' + a.repeat + ')' : ''}، وبتبلغ المالك أول ما تنرسل.`;
+  });
+def('list_scheduled', 'الرسائل المجدولة اللي ما انرسلت للحين.', S({}),
+  async () => (await db.many("SELECT id, channel, recipient, name, text, at, repeat, status, error FROM scheduled_messages WHERE status IN ('pending','failed') ORDER BY at LIMIT 50")).map(m => ({ ...m, at: U.fmt(m.at) })));
+def('cancel_scheduled', 'ألغ رسالة مجدولة برقمها.', S({ id: int('رقم الرسالة') }, ['id']),
+  async ({ id }) => { const r = await db.one("UPDATE scheduled_messages SET status='cancelled' WHERE id=$1 AND status IN ('pending','failed') RETURNING id", [id]); return r ? `✅ ألغيت الرسالة المجدولة #${id}` : `ما لقيت رسالة مجدولة #${id} قابلة للإلغاء`; });
+
+// ---------- Gmail وتقويم Google: إدارة كاملة ----------
+def('gmail_send', 'أرسل إيميل من Gmail المالك مباشرة (لأي شخص يطلبه المالك). للأشخاص الخارجيين اكتب بأسلوب مهذب واحترافي باسم المالك.',
+  S({ to: str('الإيميل (أو أكثر مفصولة بفاصلة)'), cc: str('نسخة إلى (اختياري)'), subject: str('العنوان'), body: str('النص كاملاً') }, ['to', 'subject', 'body']),
+  async (a) => { const r = await G.gmailSend(a); await db.log('email_out', `إيميل إلى ${a.to}: ${a.subject}`); return { ...r, message: `✅ انرسل الإيميل إلى ${a.to}` }; });
+def('gmail_reply', 'رد على إيميل في نفس المحادثة (بالمعرّف من gmail_search).',
+  S({ id: str('معرّف الإيميل'), body: str('نص الرد'), reply_all: bool('رد على الكل') }, ['id', 'body']),
+  async (a) => { const r = await G.gmailReply(a); await db.log('email_out', `رد على إيميل: ${r.subject}`); return r; });
+def('gmail_draft', 'جهّز مسودة إيميل في Gmail بدون إرسال (للمراجعة). استخدمها لما المالك يبي يشوف قبل الإرسال.',
+  S({ to: str('الإيميل'), cc: str('نسخة'), subject: str('العنوان'), body: str('النص') }, ['subject', 'body']), async (a) => G.gmailDraft(a));
+def('gmail_manage', 'نظّم إيميلات: read (مقروء) | unread | archive (أرشفة) | inbox | star | unstar | important | not_important | spam | trash (سلة المحذوفات).',
+  S({ ids: { type: 'array', items: { type: 'string' }, description: 'معرفات الإيميلات' }, action: str('الإجراء') }, ['ids', 'action']), async (a) => G.gmailModify(a));
+def('calendar_add', 'أضف موعد/حدث لتقويم Google مباشرة (مع تنبيه، مكان، مدعوين).',
+  S({ title: str('العنوان'), start: str('YYYY-MM-DD HH:mm'), end: str('YYYY-MM-DD HH:mm (افتراضي ساعة)'), location: str('المكان'), description: str('تفاصيل'), attendees: { type: 'array', items: { type: 'string' }, description: 'إيميلات المدعوين' }, reminder_minutes: int('تنبيه قبل كم دقيقة'), all_day: bool('طول اليوم') }, ['title', 'start']),
+  async (a) => G.calendarCreate({ ...a, start: U.parseLocal(a.start), end: a.end && U.parseLocal(a.end) }));
+def('calendar_edit', 'عدّل موعد في تقويم Google (الوقت، العنوان، المكان...). المعرّف من google_calendar.',
+  S({ id: str('معرّف الموعد'), title: str('العنوان'), start: str('YYYY-MM-DD HH:mm'), end: str('YYYY-MM-DD HH:mm'), location: str('المكان'), description: str('تفاصيل'), reminder_minutes: int('تنبيه قبل كم دقيقة') }, ['id']),
+  async (a) => G.calendarUpdate({ ...a, start: a.start && U.parseLocal(a.start), end: a.end && U.parseLocal(a.end) }));
+def('calendar_remove', 'احذف موعد من تقويم Google بالمعرّف.', S({ id: str('معرّف الموعد') }, ['id']), async ({ id }) => G.calendarDelete(id));
+def('calendar_free_time', 'وش الأوقات الفاضية عند المالك في فترة (من تقويم Google). مفيدة لما أحد يبي موعد أو تبي ترتب شي.',
+  S({ from: str('من YYYY-MM-DD'), to: str('إلى YYYY-MM-DD (شامل)'), day_start: int('بداية اليوم (افتراضي 8)'), day_end: int('نهاية اليوم (افتراضي 22)'), min_minutes: int('أقل مدة بالدقايق (افتراضي 30)') }, ['from']),
+  async (a) => G.calendarFree({ from: U.parseLocal(a.from + ' 00:00'), to: new Date(new Date(U.parseLocal((a.to || a.from) + ' 00:00')).getTime() + 864e5).toISOString(), day_start: a.day_start || 8, day_end: a.day_end || 22, min_minutes: a.min_minutes || 30 }));
+
+// ---------- الطقس، الصلاة، الهجري، العملات ----------
+const Wd = require('./world');
+def('weather', 'الطقس الحين وتوقعات الأيام الجاية لأي مدينة (افتراضي مدينة المالك).',
+  S({ city: str('المدينة'), days: int('كم يوم (افتراضي 3، أقصى 14)') }), async ({ city, days }) => Wd.weather(city || (await db.getSettings()).profile.city, days));
+def('prayer_times', 'مواقيت الصلاة (تقويم أم القرى) لمدينة وتاريخ، مع التاريخ الهجري.',
+  S({ city: str('المدينة'), date: str('YYYY-MM-DD (افتراضي اليوم)') }), async ({ city, date }) => Wd.prayerTimes(city || (await db.getSettings()).profile.city, date));
+def('convert_date', 'حوّل التاريخ: ميلادي ← هجري (أم القرى) أو هجري ← ميلادي.',
+  S({ gregorian: str('YYYY-MM-DD'), hijri: str('يوم/شهر/سنة مثل 1/9/1448') }), async (a) => Wd.convertDate(a));
+def('currency_convert', 'حوّل مبلغ بين العملات بأسعار اليوم (USD, EUR, SAR, AED, GBP, TRY, EGP...).',
+  S({ amount: numb('المبلغ'), from: str('من عملة'), to: str('إلى عملة (افتراضي SAR)') }, ['from']), async (a) => Wd.currency({ amount: a.amount || 1, from: a.from, to: a.to || 'SAR' }));
+
+// ---------- Gmail وتقويم Google (قراءة مباشرة) ----------
 def('gmail_search', 'اقرأ إيميلات Gmail حق المالك مباشرة الحين (مو من الأرشيف). استخدم صيغة بحث Gmail: اليوم = newer_than:1d، غير المقروءة = is:unread، من شخص = from:اسم أو إيميل، موضوع = subject:كلمة، مع مرفقات = has:attachment. يرجع المرسل والموضوع والتاريخ ومقتطف.',
   S({ query: str('صيغة البحث (افتراضي newer_than:1d)'), max: int('العدد (افتراضي 15، أقصى 30)') }),
   async ({ query, max }) => G.gmailSearch({ query: query || 'newer_than:1d', max }));

@@ -198,7 +198,10 @@ async function n8n(action, data = {}) {
   if (!res.ok) throw new Error(`n8n ${res.status}: ${body.slice(0, 200)}`);
   try { return JSON.parse(body); } catch (_) { return {}; }
 }
-async function sendEmail({ to, subject, body }) {
+async function sendEmail({ to, subject, body, cc }) {
+  // مباشرة من Gmail (أسرع وأضمن)، وإذا ما تيسر نستخدم n8n
+  try { return await require('./google').gmailSend({ to, cc, subject, body }); }
+  catch (e) { if (!/غير مربوط|مفتاح n8n/.test(e.message)) console.error('gmail direct', e.message); }
   return n8n('gmail.send', { to, subject, body });
 }
 

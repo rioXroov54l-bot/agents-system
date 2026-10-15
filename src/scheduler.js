@@ -42,6 +42,24 @@ async function tick() {
     const dow = U.riyadh().getUTCDay(); // 0 = الأحد
     const { T } = require('./tools');
 
+    // 0) الرسائل المجدولة (واتساب/إيميل) في وقتها بالضبط
+    for (const m of await db.many("SELECT * FROM scheduled_messages WHERE status='pending' AND at <= now() ORDER BY at LIMIT 20")) {
+      const claimed = await db.one("UPDATE scheduled_messages SET status='sending' WHERE id=$1 AND status='pending' RETURNING id", [m.id]);
+      if (!claimed) continue;
+      try {
+        const { executors } = require('./tools');
+        if (m.channel === 'email') await executors.send_email({ to: m.recipient, subject: m.subject || '—', body: m.text, agent: 'scheduler' });
+        else await executors.send_whatsapp({ phone: m.recipient, text: m.text });
+        const next = m.repeat && m.repeat !== 'none' ? nextAt(m.at, m.repeat) : null;
+        if (next) await db.q("UPDATE scheduled_messages SET status='pending', at=$2, sent_at=now() WHERE id=$1", [m.id, next]);
+        else await db.q("UPDATE scheduled_messages SET status='sent', sent_at=now() WHERE id=$1", [m.id]);
+        await ch.notifyOwner(`📤 **انرسلت الرسالة المجدولة #${m.id}** ${m.channel === 'email' ? 'بالإيميل' : 'على واتساب'} إلى ${m.name ? m.name + ' ' : ''}(${m.recipient}) الساعة ${U.fmt(new Date()).slice(11)}\n\n«${String(m.text).slice(0, 300)}»${m.channel === 'email' ? '' : '\n\nوأي رد منه بيوصلك هنا 📩'}`);
+      } catch (e) {
+        await db.q("UPDATE scheduled_messages SET status='failed', error=$2 WHERE id=$1", [m.id, e.message.slice(0, 300)]);
+        await ch.notifyOwner(`⚠️ **ما قدرت أرسل الرسالة المجدولة #${m.id}** إلى ${m.recipient}\nالسبب: ${e.message.slice(0, 200)}`);
+      }
+    }
+
     // 1) تذكير المواعيد قبل ساعة
     for (const a of await db.many("SELECT * FROM appointments WHERE NOT reminded AND at > now() AND at <= now() + interval '60 minutes'")) {
       await db.q('UPDATE appointments SET reminded=true WHERE id=$1', [a.id]);

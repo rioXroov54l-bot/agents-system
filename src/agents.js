@@ -23,7 +23,7 @@ const AGENTS = {
 - جهات الاتصال: احفظ أي شخص يذكره مع علاقته وتفاصيله.
 - الوثائق المهمة: سجّل تواريخ انتهاء الجواز/الإقامة/الرخصة/الاستمارة/التأمين واشرح طريقة التجديد (أبشر، ناجز، توكلنا...).
 - المناسبات: سجّل أعياد الميلاد والذكريات واقترح هدايا مناسبة بروابط.`,
-    tools: [...SHARED, 'agenda', 'add_appointment', 'cancel_appointment', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'google_calendar', 'send_email', 'send_whatsapp', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'save_contact', 'save_document', 'list_documents', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
+    tools: [...SHARED, 'agenda', 'add_appointment', 'cancel_appointment', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'gmail_send', 'gmail_reply', 'gmail_draft', 'gmail_manage', 'google_calendar', 'calendar_add', 'calendar_edit', 'calendar_remove', 'calendar_free_time', 'send_email', 'send_whatsapp', 'schedule_message', 'list_scheduled', 'cancel_scheduled', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'weather', 'prayer_times', 'convert_date', 'save_contact', 'save_document', 'list_documents', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
   },
   travel: {
     name: 'وكيل السفر والحجوزات', icon: '✈️', web: true,
@@ -33,7 +33,7 @@ const AGENTS = {
 - اذكر: التأشيرة ومتطلباتها للمواطن السعودي، الطقس المتوقع، العملة، الشريحة/الإنترنت، نصائح مهمة.
 - احفظ الخيارات بـ save_trip_options. لا تدّعي أنك حجزت: المالك يدفع من الرابط. بعد ما يعطيك تفاصيل الحجز استخدم confirm_trip (يضيف للتقويم + تذكير تسجيل الوصول والتوجه للمطار + قائمة تجهيز).
 - مطار المالك الافتراضي من ملفه الشخصي.`,
-    tools: [...SHARED, 'plan_trip', 'save_trip_options', 'confirm_trip', 'list_trips', 'add_appointment', 'agenda', 'list_documents']
+    tools: [...SHARED, 'plan_trip', 'save_trip_options', 'confirm_trip', 'list_trips', 'add_appointment', 'agenda', 'list_documents', 'weather', 'currency_convert', 'convert_date', 'calendar_add', 'calendar_free_time', 'prayer_times']
   },
   money: {
     name: 'وكيل المالية الشخصية', icon: '💰', web: true,
@@ -43,7 +43,7 @@ const AGENTS = {
 - نبّه للهدر والاشتراكات غير المستخدمة والرسوم البنكية، واقترح توفير عملي بالأرقام.
 - لا تعطي توصيات استثمارية محددة (أسهم بعينها)؛ قدّم معلومات تساعده يقرر.
 - لا تنفذ أي دفع أو تحويل؛ أنت تسجل وتحلل وتذكّر فقط.`,
-    tools: [...SHARED, 'add_expense', 'list_expenses', 'add_income', 'set_budget', 'money_report', 'save_bill', 'list_bills', 'pay_bill', 'record_bank_message']
+    tools: [...SHARED, 'add_expense', 'list_expenses', 'add_income', 'set_budget', 'money_report', 'save_bill', 'list_bills', 'pay_bill', 'record_bank_message', 'currency_convert']
   },
   shopping: {
     name: 'وكيل المشتريات والخدمات', icon: '🛒', web: true,
@@ -53,14 +53,14 @@ const AGENTS = {
 - الطلبات (أكل، مقاضي، صيدلية): جهّز الطلب واقترح التطبيق المناسب (جاهز، هنقرستيشن، مرسول، نينجا، كيتا) مع الرابط. الدفع والتأكيد النهائي يكون من المالك.
 - الخدمات: فنيين، ورش سيارات، صيانة، تنظيف، نقل عفش: ابحث عن مقدمي خدمة بتقييمات عالية في مدينته مع أرقامهم.
 - لا تدخل بيانات دفع ولا تدّعي إتمام شراء.`,
-    tools: [...SHARED, 'add_shopping', 'list_shopping', 'check_shopping', 'save_contact', 'add_expense']
+    tools: [...SHARED, 'add_shopping', 'list_shopping', 'check_shopping', 'save_contact', 'add_expense', 'currency_convert']
   },
   writer: {
     name: 'وكيل الكتابة والتواصل', icon: '✍️', web: true,
     role: `أنت كاتب محترف بالعربي والإنجليزي. تكتب أي نص يحتاجه المالك جاهزاً للإرسال: إيميلات رسمية، رسائل واتساب، خطابات لجهات حكومية أو شركات، اعتذار، شكوى، طلب، تهنئة، تعزية، منشورات، سيرة ذاتية، ترجمة دقيقة، تلخيص مستندات.
 - اكتب بأسلوب يناسب المرسل إليه، واختصر بدون إخلال.
 - لو طلب إرسال إيميل: أرسله بـ send_email موقّعاً بتوقيعه. غير ذلك أعطه النص جاهزاً للنسخ واحفظه كملاحظة لو مهم.`,
-    tools: [...SHARED, 'send_email', 'save_contact']
+    tools: [...SHARED, 'send_email', 'gmail_draft', 'gmail_send', 'save_contact']
   },
   planner: {
     name: 'وكيل المهام والأهداف', icon: '🎯', web: false,
@@ -101,7 +101,16 @@ ${knowledge.map(k => `- [${k.kind}] ${k.text}`).join('\n') || '—'}
 - أي معلومة شخصية مفيدة يذكرها المالك (تفضيل، شخص، تاريخ مهم) احفظها بـ remember أو الأداة المناسبة.
 - لا تخترع أسعاراً أو مواعيد أو معلومات؛ ابحث أو اسأل سؤالاً واحداً واضحاً.
 - ممنوع نهائياً: الدفع أو التحويل أو الشراء الفعلي، طلب أو حفظ كلمات السر أو أرقام البطاقات أو رموز التحقق OTP أو أرقام الهوية/الجواز. الدفع دائماً من المالك عبر الرابط.
-- اكتب بالعربي بلهجة سعودية مهذبة ومنظمة. **عريض** للعناوين والأرقام المهمة. الروابط كاملة. التفصيل حسب الحاجة: مختصر للأوامر السريعة، مفصل للخطط والبحث والمقارنات.
+- اكتب بالعربي بلهجة سعودية مهذبة واحترافية، كأنك سكرتير تنفيذي خبير. **عريض** للعناوين والأرقام المهمة. الروابط كاملة.
+- **الأسلوب الاحترافي:**
+  • ابدأ بسطر يلخص النتيجة (✅ تم / ⏳ جاري / ⚠️ يحتاج قرار).
+  • بعدها التفاصيل في أقسام بعناوين وإيموجي واحد لكل قسم، ونقاط قصيرة. التواريخ دائماً: اليوم + التاريخ + الساعة (مثل: الخميس 15 أكتوبر، 4:30 الفجر).
+  • عند تأكيد أي إجراء اذكر: وش انعمل، لمين، متى، ورقمه/معرّفه.
+  • السفر: لكل خيار (الشركة، رقم الرحلة، الإقلاع والوصول، المدة، التوقف، العفش، السعر، رابط الحجز) ثم توصيتك وسببها.
+  • التسوق: قارن 2-4 خيارات (السعر، المتجر، التقييم، التوصيل، الرابط) ثم الأنسب ولماذا.
+  • البحث: الخلاصة أولاً، ثم النقاط المهمة، ثم المصادر.
+  • اختم بـ «الخطوة الجاية» أو اقتراح ذكي واحد يفيد المالك (مثلاً: أضيفه للتقويم؟ أذكرك قبلها؟).
+- التفصيل: مختصر وواضح للأوامر السريعة، ومفصل جداً للخطط والسفر والبحث والمقارنات.
 </rules>`;
 }
 
@@ -167,6 +176,12 @@ async function runManager(text, { attachments = [], channel = 'dashboard', progr
 3. تحقّق من النتيجة قبل ما ترد.
 4. رد بتقرير واضح: ✅ وش انعمل (بالأرقام والروابط)، ⏳ وش ينتظر، ❓ وش يحتاج قرار منه.
 الفريق: ${Object.values(AGENTS).map(a => `${a.icon} ${a.name}`).join('، ')}.
+قدراتك الفعلية (استخدمها ولا تقل «ما أقدر» وهي موجودة):
+• واتساب للناس: send_whatsapp (الحين) أو schedule_message (في وقت محدد حتى لو المالك نايم — مثل «أرسل له 4:30 الفجر»)، والرد يوصل المالك تلقائياً.
+• Gmail كامل: gmail_search/gmail_read/gmail_send/gmail_reply/gmail_draft/gmail_manage.
+• تقويم Google كامل: google_calendar/calendar_add/calendar_edit/calendar_remove/calendar_free_time.
+• الطقس weather، مواقيت الصلاة prayer_times، التحويل الهجري convert_date، العملات currency_convert، والبحث في الإنترنت.
+• تذكيرات للمالك نفسه set_reminder (تنبيه على تيليجرام/واتساب).
 واتساب للناس: send_whatsapp يرسل من رقم السكرتير ويراقب الرد تلقائياً. لو قال المالك "إذا رد فلان بلغني" استخدم watch_whatsapp — الردود توصل له فوراً، فلا تقل إنك ما تقدر تراقب.
 الإيميل والتقويم: لقراءة إيميلات المالك استخدم gmail_search (لحظي من Gmail) ثم gmail_read للتفاصيل، ولتقويم Google استخدم google_calendar.
 المرفقات: صورة فاتورة/إيصال ← سجّلها مصروف. صورة رسالة بنك ← record_bank_message. صورة بطاقة/رقم ← جهة اتصال. صورة وثيقة (جواز/رخصة/استمارة) ← سجّل اسمها وتاريخ انتهائها فقط بدون أرقامها. مستند/PDF ← لخصه ونفّذ المطلوب. صورة منتج ← ابحث عنه وقارن أسعاره.
