@@ -67,6 +67,25 @@ CREATE TABLE IF NOT EXISTS appointments (
   customer_id int, location text, notes text, gcal_id text, reminded boolean DEFAULT false,
   created_at timestamptz DEFAULT now());
 
+CREATE TABLE IF NOT EXISTS medications (
+  id serial PRIMARY KEY, name text NOT NULL, dose text, times jsonb DEFAULT '[]', for_whom text DEFAULT 'أنا', stock numeric, per_dose numeric DEFAULT 1,
+  with_food text, until date, notes text, reminder_ids jsonb DEFAULT '[]', active boolean DEFAULT true, refill_alerted boolean DEFAULT false,
+  last_deduct timestamptz, created_at timestamptz DEFAULT now());
+CREATE TABLE IF NOT EXISTS health_logs (
+  id serial PRIMARY KEY, metric text NOT NULL, value text NOT NULL, unit text, for_whom text DEFAULT 'أنا', note text, at timestamptz DEFAULT now());
+CREATE TABLE IF NOT EXISTS assets (
+  id serial PRIMARY KEY, type text DEFAULT 'other', name text NOT NULL, details text, purchase_date date, price numeric, warranty_until date,
+  odometer int, warranty_alerted boolean DEFAULT false, created_at timestamptz DEFAULT now());
+CREATE TABLE IF NOT EXISTS maintenance (
+  id serial PRIMARY KEY, asset_id int NOT NULL, task text NOT NULL, every_months int, every_km int, last_done date, last_km int,
+  next_due date, alerted boolean DEFAULT false, created_at timestamptz DEFAULT now());
+CREATE TABLE IF NOT EXISTS holdings (
+  symbol text PRIMARY KEY, qty numeric NOT NULL, avg_cost numeric, note text, updated_at timestamptz DEFAULT now());
+
+CREATE TABLE IF NOT EXISTS reports (
+  id serial PRIMARY KEY, token text UNIQUE NOT NULL, kind text DEFAULT 'report', title text NOT NULL, body text NOT NULL,
+  meta jsonb DEFAULT '{}', created_at timestamptz DEFAULT now());
+
 CREATE TABLE IF NOT EXISTS routines (
   id serial PRIMARY KEY, title text NOT NULL, prompt text NOT NULL, at timestamptz NOT NULL, repeat text DEFAULT 'daily',
   active boolean DEFAULT true, last_run timestamptz, last_result text, created_at timestamptz DEFAULT now());
@@ -127,6 +146,8 @@ CREATE TABLE IF NOT EXISTS runs (
 
 -- ===== الحياة الشخصية =====
 ALTER TABLE customers ADD COLUMN IF NOT EXISTS relation text;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS keep_every_days int;
+ALTER TABLE customers ADD COLUMN IF NOT EXISTS touch_alerted_at timestamptz;
 ALTER TABLE reminders ADD COLUMN IF NOT EXISTS repeat text DEFAULT 'none';
 ALTER TABLE expenses ADD COLUMN IF NOT EXISTS payment_method text;
 

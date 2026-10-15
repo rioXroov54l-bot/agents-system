@@ -1,6 +1,7 @@
 // ملخصات فورية بدون ذكاء اصطناعي (سريعة ومجانية)
 const db = require('./db');
 const U = require('./util');
+const C = require('./config');
 
 const PRI = { urgent: '🔴', high: '🟠', normal: '🔵', low: '⚪' };
 const T = () => require('./tools').T;
@@ -218,4 +219,31 @@ async function routines() {
   return '🔁 **مهامك الذكية المتكررة**\n\n' + rs.map(r => `**#${r.id}** ${r.active ? '' : '⏸️ '}${r.title}\n${R[r.repeat] || r.repeat} — الجاية: ${U.fmt(r.at)}${r.last_run ? ' | آخر مرة: ' + U.fmt(r.last_run) : ''}`).join('\n\n') + '\n\n💬 «احذف المهمة رقم ...» أو «شغّل المهمة رقم ... الحين»';
 }
 
-module.exports = { routines, payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };
+async function docs() {
+  const rs = await db.many('SELECT id, kind, title, token, created_at FROM reports ORDER BY id DESC LIMIT 12').catch(() => []);
+  if (!rs.length) return '📄 ما جهزت لك مستندات للحين.\n\n💬 «سوّ لي تقرير عن ...» أو «اكتب لي خطاب ...»';
+  return '📄 **ملفاتك ومستنداتك**\n\n' + rs.map(r => `• **${r.title}** (${U.fmt(r.created_at).slice(0, 10)})\n${C.PUBLIC_URL}/r/${r.token}`).join('\n\n');
+}
+async function meds() {
+  const ms = await T().list_medications.handler({}).catch(() => []);
+  if (!ms.length) return '💊 ما فيه أدوية مسجلة.\n\n💬 «عندي دواء ... حبة الساعة 9 الصبح، العلبة فيها 30»';
+  return '💊 **الأدوية**\n\n' + ms.map(m => `• **${m.name}**${m.dose ? ' (' + m.dose + ')' : ''}${m.for_whom && m.for_whom !== 'أنا' ? ' — ' + m.for_whom : ''}\n  ⏰ ${m.times.join(' · ')}${m.with_food ? ' · ' + m.with_food : ''}${m.days_left !== null ? `\n  📦 يكفي ${m.days_left} يوم${m.days_left <= 5 ? ' ⚠️' : ''}` : ''}`).join('\n\n');
+}
+async function portfolio() {
+  const n = await db.one('SELECT count(*) AS n FROM holdings').catch(() => ({ n: 0 }));
+  if (!Number(n.n)) return '📈 محفظتك فاضية.\n\n💬 «عندي 100 سهم أرامكو بمتوسط 27» أو «كم سعر الراجحي؟»';
+  const p = await require('./life').portfolio();
+  const f = v => v === null || v === undefined ? '—' : Number(v).toLocaleString('en-US', { maximumFractionDigits: 2 });
+  return '📈 **محفظتك الحين**\n\n' + p.holdings.map(h => h.error ? `• ${h.symbol}: ⚠️ ما قدرت أجيب السعر` :
+    `• **${h.name}** (${h.symbol})\n  ${f(h.qty)} × ${f(h.price)} = **${f(h.value)} ${h.currency || ''}**${h.day_pct !== null ? ` | اليوم ${h.day_pct > 0 ? '🟢 +' : h.day_pct < 0 ? '🔴 ' : ''}${h.day_pct}%` : ''}${h.pnl !== null ? `\n  الربح/الخسارة: ${h.pnl >= 0 ? '🟢 +' : '🔴 '}${f(h.pnl)} (${h.pnl_pct}%)` : ''}`).join('\n\n') +
+    (p.total_sar ? `\n\n💰 **إجمالي (بالريال): ${f(p.total_sar)}**` : '');
+}
+async function assets() {
+  const as = await T().list_assets.handler({}).catch(() => []);
+  if (!as.length) return '🚗 ما سجلت ممتلكات.\n\n💬 «عندي كامري 2022 العداد 45000» أو «اشتريت مكيف ضمانه 5 سنين»';
+  const I = { car: '🚗', home: '🏠', device: '📱', other: '📦' };
+  return '🚗 **ممتلكاتك والصيانة**\n\n' + as.map(a => `${I[a.type] || '📦'} **${a.name}**${a.odometer ? ' — ' + a.odometer + ' كم' : ''}${a.warranty_days_left !== null ? (a.warranty_days_left >= 0 ? `\n  🛡️ الضمان باقي ${a.warranty_days_left} يوم` : '\n  🛡️ الضمان منتهي') : ''}` +
+    a.maintenance.map(m => `\n  🔧 ${m.task}: ${m.next_due || ''}${m.km_due ? (m.next_due ? ' أو ' : '') + m.km_due + ' كم' : ''}`).join('')).join('\n\n');
+}
+
+module.exports = { docs, meds, portfolio, assets, routines, payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };

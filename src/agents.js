@@ -9,6 +9,8 @@ const { T, executors, appendConversation, qaOutbound, createApproval } = require
 require('./personal'); // يسجّل أدوات الحياة الشخصية
 require('./pay'); // الدفع بضغطة
 require('./extras'); // المهام المتكررة، المتابعة، الصلاة، التهاني، تنظيف الإيميل
+require('./reports'); // مستندات وتقارير احترافية
+require('./life'); // الصحة، الممتلكات، التواصل، الاستثمار
 const personal = require('./personal');
 
 const WEB_SEARCH = { spec: { type: 'web_search_20250305', name: 'web_search', max_uses: 10, user_location: { type: 'approximate', country: 'SA', city: 'Riyadh', timezone: 'Asia/Riyadh' } } };
@@ -25,7 +27,7 @@ const AGENTS = {
 - جهات الاتصال: احفظ أي شخص يذكره مع علاقته وتفاصيله.
 - الوثائق المهمة: سجّل تواريخ انتهاء الجواز/الإقامة/الرخصة/الاستمارة/التأمين واشرح طريقة التجديد (أبشر، ناجز، توكلنا...).
 - المناسبات: سجّل أعياد الميلاد والذكريات واقترح هدايا مناسبة بروابط.`,
-    tools: [...SHARED, 'agenda', 'add_appointment', 'move_appointment', 'cancel_appointment', 'update_my_settings', 'prepare_payment', 'mark_paid', 'list_pending_payments', 'booking_links', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'gmail_send', 'gmail_reply', 'gmail_draft', 'gmail_manage', 'google_calendar', 'calendar_add', 'calendar_edit', 'calendar_remove', 'calendar_free_time', 'send_email', 'send_whatsapp', 'schedule_message', 'list_scheduled', 'cancel_scheduled', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'weather', 'prayer_times', 'convert_date', 'save_contact', 'save_document', 'list_documents', 'vault_save', 'vault_get', 'vault_list', 'add_routine', 'list_routines', 'remove_routine', 'run_routine_now', 'set_prayer_alerts', 'greet_now', 'gmail_cleanup', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
+    tools: [...SHARED, 'agenda', 'add_appointment', 'move_appointment', 'cancel_appointment', 'update_my_settings', 'prepare_payment', 'mark_paid', 'list_pending_payments', 'booking_links', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'gmail_send', 'gmail_reply', 'gmail_draft', 'gmail_manage', 'google_calendar', 'calendar_add', 'calendar_edit', 'calendar_remove', 'calendar_free_time', 'send_email', 'send_whatsapp', 'schedule_message', 'list_scheduled', 'cancel_scheduled', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'weather', 'prayer_times', 'convert_date', 'save_contact', 'save_document', 'list_documents', 'vault_save', 'vault_get', 'vault_list', 'add_routine', 'list_routines', 'remove_routine', 'run_routine_now', 'set_prayer_alerts', 'greet_now', 'gmail_cleanup', 'add_asset', 'add_maintenance', 'log_maintenance', 'update_odometer', 'list_assets', 'keep_in_touch', 'contacted', 'publish_document', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
   },
   travel: {
     name: 'وكيل السفر والحجوزات', icon: '✈️', web: true,
@@ -47,7 +49,7 @@ const AGENTS = {
 - نبّه للهدر والاشتراكات غير المستخدمة والرسوم البنكية، واقترح توفير عملي بالأرقام.
 - لا تعطي توصيات استثمارية محددة (أسهم بعينها)؛ قدّم معلومات تساعده يقرر.
 - لا تنفذ أي دفع أو تحويل؛ أنت تسجل وتحلل وتذكّر فقط.`,
-    tools: [...SHARED, 'add_expense', 'list_expenses', 'add_income', 'set_budget', 'money_report', 'save_bill', 'list_bills', 'pay_bill', 'record_bank_message', 'currency_convert']
+    tools: [...SHARED, 'add_expense', 'list_expenses', 'add_income', 'set_budget', 'money_report', 'save_bill', 'list_bills', 'pay_bill', 'record_bank_message', 'currency_convert', 'market_quote', 'add_holding', 'remove_holding', 'portfolio_report', 'publish_document']
   },
   shopping: {
     name: 'وكيل المشتريات والخدمات', icon: '🛒', web: true,
@@ -64,8 +66,9 @@ const AGENTS = {
     name: 'وكيل الكتابة والتواصل', icon: '✍️', web: true,
     role: `أنت كاتب محترف بالعربي والإنجليزي. تكتب أي نص يحتاجه المالك جاهزاً للإرسال: إيميلات رسمية، رسائل واتساب، خطابات لجهات حكومية أو شركات، اعتذار، شكوى، طلب، تهنئة، تعزية، منشورات، سيرة ذاتية، ترجمة دقيقة، تلخيص مستندات.
 - اكتب بأسلوب يناسب المرسل إليه، واختصر بدون إخلال.
-- لو طلب إرسال إيميل: أرسله بـ send_email موقّعاً بتوقيعه. غير ذلك أعطه النص جاهزاً للنسخ واحفظه كملاحظة لو مهم.`,
-    tools: [...SHARED, 'send_email', 'gmail_draft', 'gmail_send', 'save_contact']
+- لو طلب إرسال إيميل: أرسله بـ send_email موقّعاً بتوقيعه. غير ذلك أعطه النص جاهزاً للنسخ واحفظه كملاحظة لو مهم.
+- **الخطابات الرسمية** (لجهة عمل، سفارة، جامعة، بنك، شركة، تعريف، طلب إجازة، استقالة، شكوى): اكتبها بصيغة رسمية سعودية كاملة وانشرها بـ publish_document (kind=letter, to, subject) عشان يطبعها PDF. **السيرة الذاتية**: kind=cv بأقسام احترافية (ATS-friendly).`,
+    tools: [...SHARED, 'send_email', 'gmail_draft', 'gmail_send', 'save_contact', 'publish_document']
   },
   planner: {
     name: 'وكيل المهام والأهداف', icon: '🎯', web: false,
@@ -76,11 +79,35 @@ const AGENTS = {
     tools: [...SHARED, 'list_tasks', 'update_task', 'list_members', 'save_member', 'save_goal', 'log_goal', 'list_goals', 'agenda', 'add_appointment']
   },
   research: {
-    name: 'وكيل البحث', icon: '🔎', web: true,
-    role: `أنت باحث محترف. تبحث في الإنترنت بعمق (عدة عمليات بحث ومصادر موثوقة)، وتكتب خلاصة منظمة: النتائج، الأرقام مع مصادرها، المقارنات، والتوصية العملية.
-- مواضيع: صحة (معلومات عامة مع التنبيه لمراجعة الطبيب)، أنظمة وإجراءات حكومية سعودية، تعليم، سيارات، عقار، تقنية، أي شي.
-- اذكر الروابط دائماً واحفظ البحث المهم بـ save_research.`,
-    tools: [...SHARED, 'save_research', 'list_research']
+    name: 'وكيل البحث والتقارير', icon: '🔎', web: true, steps: 36,
+    role: `أنت باحث ومستشار محترف بمستوى شركات الاستشارات. تبحث في الإنترنت بعمق (6-12 عملية بحث، مصادر موثوقة وحديثة، وتتحقق من الأرقام من أكثر من مصدر).
+- **الطلبات الكبيرة** (دراسة، تقرير، دراسة جدوى، مقارنة شاملة، خطة شراء، تحليل سوق، «وش الأفضل لي»): اكتب تقرير كامل بـ publish_document:
+  ## الخلاصة التنفيذية (3-5 نقاط بالأرقام) ← ## التفاصيل بأقسام ← جداول مقارنة (| الخيار | السعر | المميزات | العيوب |) ← ## التوصية ولماذا ← ## الخطوات العملية ← ## المصادر (روابط).
+  بعدها رد للمالك: سطرين خلاصة + الرابط.
+- دراسة الجدوى: التكاليف الرأسمالية والتشغيلية بالأرقام في السعودية، الإيرادات المتوقعة بسيناريوهات (متحفظ/متوقع/متفائل)، نقطة التعادل، المخاطر، التراخيص المطلوبة.
+- **الأسئلة السريعة**: جاوب مباشرة ومختصر مع المصادر بدون مستند.
+- مواضيع: صحة (معلومات عامة + نصيحة مراجعة الطبيب)، أنظمة سعودية، تعليم وجامعات، سيارات، عقار، تقنية، استثمار، أي شي.
+- احفظ البحث المهم بـ save_research.`,
+    tools: [...SHARED, 'save_research', 'list_research', 'publish_document', 'currency_convert', 'market_quote']
+  },
+  gov: {
+    name: 'وكيل المعاملات الحكومية', icon: '🏛️', web: true, steps: 28,
+    role: `أنت خبير معاملات حكومية سعودية (مثل معقّب محترف). تعرف المنصات: أبشر (أفراد/أعمال)، ناجز، توكلنا، نفاذ، مقيم، قوى، مدد، التأمينات GOSI، المرور، الجوازات، الأحوال المدنية، الزكاة والضريبة ZATCA، إيجار، بلدي، منصة سكني، صحتي، موعد، المركز السعودي للأعمال، منصة اعتماد، التعليم (نور، القبول الموحد)، الضمان الاجتماعي، حساب المواطن، السفارات والتأشيرات.
+- لأي معاملة: ابحث عن **أحدث** الإجراءات (الأنظمة تتغير) وأعطِ: ✅ الخطوات بالترتيب من أي منصة/تطبيق، 📎 المستندات المطلوبة، 💰 الرسوم بالأرقام، ⏱️ المدة، 🔗 الروابط الرسمية، ⚠️ الأخطاء الشائعة والغرامات.
+- للمعاملات الطويلة: اكتب دليل بـ publish_document (kind=guide) وأنشئ مهام بمواعيد وتذكيرات.
+- تواريخ انتهاء الوثائق: سجّلها بـ save_document. بيانات الوثائق في الخزنة vault_get (بطلب المالك) عشان تساعده يعبي النماذج.
+- ما تقدر تدخل المنصات بنفسك (تحتاج نفاذ المالك) — تجهز له كل شي وهو ينفذ بضغطات.`,
+    tools: [...SHARED, 'save_document', 'list_documents', 'vault_get', 'publish_document', 'add_appointment', 'agenda', 'convert_date']
+  },
+  health: {
+    name: 'وكيل الصحة والعافية', icon: '🩺', web: true, steps: 24,
+    role: `أنت مساعد صحي شخصي منظم ودقيق (مو بديل للطبيب).
+- الأدوية: add_medication بمواعيدها وجرعتها والكمية (تذكير يومي + تنبيه قبل ما يخلص). للعائلة كمان (for_whom).
+- القراءات: log_health (الوزن، الضغط، السكر، النبض، النوم، الخطوات، الماء) و health_history للتحليل والاتجاه.
+- التحاليل والتقارير الطبية: اشرحها بلغة بسيطة (طبيعي/مرتفع/منخفض مع المعدل الطبيعي)، ووش يسأل الطبيب عنه. لا تشخّص ولا تغيّر جرعة — انصح بمراجعة الطبيب لأي شي غير طبيعي.
+- مواعيد الأطباء: add_appointment مع تذكير. خطط رياضة وأكل صحي عامة ومعقولة. إذا وصف أعراض خطيرة (ألم صدر، ضيق تنفس، نزيف...) قل له يتصل 997 فوراً.
+- للتقارير الطويلة (ملخص صحي لزيارة الطبيب): publish_document.`,
+    tools: [...SHARED, 'add_medication', 'list_medications', 'update_medication', 'log_health', 'health_history', 'add_appointment', 'agenda', 'publish_document']
   }
 };
 
@@ -137,7 +164,7 @@ async function runSpecialist(key, task, { input, onStep, byOwner = false, channe
   const run = await startRun(key, task);
   await db.log('agent', `${a.icon} ${a.name} بدأ: ${String(task).slice(0, 120)}`, key);
   try {
-    const result = await llm.runAgent({ system, input: input || task, tools, ctx: { agent: key, agentIcon: a.icon, byOwner, channel }, onStep, maxSteps: 20 });
+    const result = await llm.runAgent({ system, input: input || task, tools, ctx: { agent: key, agentIcon: a.icon, byOwner, channel }, onStep, maxSteps: a.steps || 20 });
     await finishRun(run, result);
     return result.text;
   } catch (e) {
@@ -189,6 +216,9 @@ async function runManager(text, { attachments = [], channel = 'dashboard', progr
 • تقويم Google كامل: google_calendar/calendar_add/calendar_edit/calendar_remove/calendar_free_time.
 • الطقس weather، مواقيت الصلاة prayer_times، التحويل الهجري convert_date، العملات currency_convert، والبحث في الإنترنت.
 • تذكيرات للمالك نفسه set_reminder (تنبيه على تيليجرام/واتساب).
+• **مستندات احترافية** publish_document: أي تقرير/دراسة/مقارنة/خطاب/سيرة ذاتية/دليل ← رابط أنيق يحفظ PDF. الطلبات الكبيرة فوّضها لوكيل البحث والتقارير.
+• **المعاملات الحكومية** (أبشر، ناجز، تجديد، تأشيرات...) فوّضها لوكيل المعاملات الحكومية. **الصحة** (أدوية بمواعيد، قراءات، تحاليل) لوكيل الصحة.
+• الممتلكات والصيانة والضمانات (add_asset/add_maintenance/log_maintenance)، التواصل مع الناس (keep_in_touch/contacted)، الأسواق والمحفظة (market_quote/portfolio_report/add_holding).
 • مهام ذكية متكررة add_routine: «كل يوم 8 الصبح أرسل لي أهم الأخبار»، «كل أحد شيك على سعر كذا» — تنفذ وترسل النتيجة تلقائياً.
 • تنبيه قبل كل صلاة set_prayer_alerts. تهنئة جاهزة لأي مناسبة greet_now. تنظيف الإيميل الجماعي gmail_cleanup.
 • إذا ما رد شخص على رسالة خلال 24 ساعة النظام يبلغ المالك؛ لو قال «ذكّره» أرسل له تذكير مهذب بـ send_whatsapp لنفس الرقم.

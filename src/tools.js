@@ -95,6 +95,7 @@ const executors = {
     await db.log('wa_out', `واتساب إلى ${p.phone}`);
     await require('./watch').add(ch.saNumber(p.phone), { note: 'رد على رسالة: ' + p.text.slice(0, 80), days: 14, outbound: p.text }).catch(() => {});
     await appendConversation(ch.saNumber(p.phone), null, 'agent', p.text).catch(() => {});
+    await db.q("UPDATE customers SET last_contact_at=now() WHERE right(regexp_replace(coalesce(phone,''),'\\D','','g'), 9) = right($1, 9)", [ch.saNumber(p.phone)]).catch(() => {});
     return `✅ انرسلت رسالة واتساب إلى ${p.phone} — وأي رد منه بيوصلك تلقائياً لمدة 14 يوم`;
   },
   async send_quote(p) {

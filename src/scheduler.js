@@ -92,6 +92,8 @@ async function tick() {
     // 4) مرة يومياً 9 الصبح: الفواتير، الوثائق، المناسبات
     if (hour >= 9 && await onceToday('daily_checks')) {
       await db.dailyBackup().catch(e => console.error('backup', e.message));
+      // الأدوية، الصيانة، الضمانات، التواصل مع الناس
+      await require('./life').daily().catch(e => console.error('life daily', e.message));
       // الفواتير: قبل 3 أيام ويوم الاستحقاق والمتأخرة
       for (const b of (await T.list_bills.handler({ due_within_days: 3 })).bills) {
         const today = U.riyadhDay();

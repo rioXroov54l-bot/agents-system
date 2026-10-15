@@ -28,6 +28,14 @@ app.get('/privacy', (_req, res) => res.type('html').send(`<!doctype html><html l
 <h2>Privacy Policy</h2><p>We use messages customers send us solely to respond and serve them. We store name, contact number and message text for customer service. We do not sell or share data with third parties other than service providers required to operate the system (Meta, Google, Anthropic). To request deletion, message us on the same number.</p></body></html>`));
 
 // المستندات العامة (برابط سري)
+// مستندات وتقارير السكرتير (رابط سري)
+app.get('/r/:token', async (req, res) => {
+  try {
+    const html = await require('./reports').render(req.params.token, { print: req.query.print === '1' });
+    if (!html) return res.status(404).send('غير موجود');
+    res.set('X-Robots-Tag', 'noindex').type('html').send(html);
+  } catch (e) { res.status(500).send('خطأ'); }
+});
 app.get('/d/:type/:id/:token', async (req, res) => {
   const table = { q: 'quotes', i: 'invoices' }[req.params.type];
   if (!table) return res.sendStatus(404);
