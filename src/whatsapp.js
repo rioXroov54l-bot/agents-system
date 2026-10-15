@@ -4,6 +4,8 @@ const db = require('./db');
 const ch = require('./channels');
 const quick = require('./quick');
 const { decide } = require('./approvals');
+const W = require('./watch');
+const { appendConversation } = require('./tools');
 
 let agents;
 const A = () => (agents = agents || require('./agents'));
@@ -74,6 +76,17 @@ async function handleEvolution(body) {
     const num = ch.waNumber(pn || jid);
     const parsed = extract(msg);
     if (isOwner(num)) { handleOwner(num, parsed).catch(e => console.error('wa owner', e.message)); continue; }
+    const watched = await W.get(num);
+    if (watched) { // شخص تحت المراقبة: نوصّل رده للمالك ولا نرد عليه
+      const what = parsed.text || (parsed.attachment ? (parsed.attachment.type === 'image' ? '[صورة]' : '[مستند]') : parsed.voice ? '[رسالة صوتية]' : `[${parsed.kind}]`);
+      const who = msg.pushName || watched.name || num;
+      const note = `📩 **رد من ${who}** (${num})${watched.note ? '\n📝 ' + watched.note : ''}\n\n${what}`;
+      await appendConversation(num, msg.pushName, 'customer', what).catch(() => {});
+      await db.q("INSERT INTO owner_chat (role, text, channel) VALUES ('agent', $1, 'notify')", [note.replace(/\*\*/g, '')]).catch(() => {});
+      await db.log('whatsapp', `رد من ${who} (…${num.slice(-4)}) وصّلته لك`);
+      ch.notifyOwner(note).catch(e => console.error('watch notify', e.message));
+      continue;
+    }
     if (!(await db.getSettings()).reply_others) { // الوضع الافتراضي: السكرتير يرد عليك أنت بس
       db.log('whatsapp', `تجاهلت رسالة من ${msg.pushName || ''} (…${num.slice(-4)})`).catch(() => {});
       continue;

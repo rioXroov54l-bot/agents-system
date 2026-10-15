@@ -103,6 +103,8 @@ cd $DIR/deploy && docker compose exec -T postgres pg_dumpall -U postgres | gzip 
 find /opt/sakrtir-backups -name 'db-*.sql.gz' -mtime +14 -delete
 CRON
 chmod +x /etc/cron.daily/sakrtir-backup
+# تحديث تلقائي من GitHub كل 10 دقايق
+echo '*/10 * * * * root sh /opt/sakrtir/deploy/update.sh' > /etc/cron.d/sakrtir-update
 sleep 20
 docker compose ps --format 'table {{.Service}}\t{{.Status}}'
 

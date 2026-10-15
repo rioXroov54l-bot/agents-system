@@ -88,7 +88,8 @@ const executors = {
     await ch.sendWhatsApp(p.phone, p.text);
     if (p.customer_id) await db.q('INSERT INTO interactions (customer_id, channel, direction, summary) VALUES ($1,$2,$3,$4)', [p.customer_id, 'whatsapp', 'out', p.text.slice(0, 200)]);
     await db.log('wa_out', `واتساب إلى ${p.phone}`);
-    return `✅ انرسلت رسالة واتساب إلى ${p.phone}`;
+    await require('./watch').add(ch.saNumber(p.phone), { note: 'رد على رسالة: ' + p.text.slice(0, 80), days: 14 }).catch(() => {});
+    return `✅ انرسلت رسالة واتساب إلى ${p.phone} — وأي رد منه بيوصلك تلقائياً لمدة 14 يوم`;
   },
   async send_quote(p) {
     const qt = await db.one('SELECT * FROM quotes WHERE id=$1', [p.quote_id]);
@@ -443,6 +444,14 @@ def('set_reminder', 'ذكّر المالك بشيء في وقت محدد (يوص
 
 def('list_emails', 'الإيميلات اللي وصلت للنظام وانحفظت (ملخصة ومصنفة). لقراءة Gmail لحظياً استخدم gmail_search.', S({ important_only: bool('المهمة فقط'), unhandled_only: bool('غير المعالجة'), limit: int('العدد') }),
   async ({ important_only, unhandled_only, limit = 15 }) => db.many('SELECT id, from_addr, subject, summary, category, important, handled, at FROM emails WHERE (NOT $1 OR important) AND (NOT $2 OR NOT handled) ORDER BY at DESC LIMIT $3', [!!important_only, !!unhandled_only, Math.min(limit, 50)]));
+
+// ---------- مراقبة ردود واتساب ----------
+def('watch_whatsapp', 'راقب رسائل شخص على رقم السكرتير: أي رسالة منه توصل للمالك فوراً (تيليجرام/واتساب) بدون ما يرد عليه السكرتير. استخدمها لما يقول المالك "إذا رد عليك فلان بلغني/انسخ لي رده".',
+  S({ phone: str('رقم الجوال 05xxxxxxxx'), name: str('اسمه (اختياري)'), note: str('ليش نراقبه (اختياري)'), days: int('كم يوم (افتراضي 30)') }, ['phone']),
+  async ({ phone, name, note, days }) => { const w = await require('./watch').add(ch.saNumber(phone), { name, note, days }); return `✅ أراقب ${name || phone} لين ${w.until.slice(0, 10)}: أي رسالة منه بتوصلك فوراً.`; });
+def('unwatch_whatsapp', 'أوقف مراقبة رسائل شخص.', S({ phone: str('رقم الجوال') }, ['phone']),
+  async ({ phone }) => { await require('./watch').remove(phone); return `✅ وقفت مراقبة ${phone}`; });
+def('list_watched', 'الأشخاص اللي تحت المراقبة (ردودهم توصل للمالك).', S({}), async () => Object.values(await require('./watch').all()));
 
 // ---------- Gmail وتقويم Google (قراءة مباشرة) ----------
 const G = require('./google');

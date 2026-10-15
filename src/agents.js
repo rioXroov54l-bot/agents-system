@@ -23,7 +23,7 @@ const AGENTS = {
 - جهات الاتصال: احفظ أي شخص يذكره مع علاقته وتفاصيله.
 - الوثائق المهمة: سجّل تواريخ انتهاء الجواز/الإقامة/الرخصة/الاستمارة/التأمين واشرح طريقة التجديد (أبشر، ناجز، توكلنا...).
 - المناسبات: سجّل أعياد الميلاد والذكريات واقترح هدايا مناسبة بروابط.`,
-    tools: [...SHARED, 'agenda', 'add_appointment', 'cancel_appointment', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'google_calendar', 'send_email', 'send_whatsapp', 'save_contact', 'save_document', 'list_documents', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
+    tools: [...SHARED, 'agenda', 'add_appointment', 'cancel_appointment', 'list_reminders', 'cancel_reminder', 'list_emails', 'gmail_search', 'gmail_read', 'google_calendar', 'send_email', 'send_whatsapp', 'watch_whatsapp', 'unwatch_whatsapp', 'list_watched', 'save_contact', 'save_document', 'list_documents', 'save_occasion', 'upcoming_occasions', 'list_tasks', 'update_task', 'save_bill', 'list_bills', 'list_trips', 'confirm_trip']
   },
   travel: {
     name: 'وكيل السفر والحجوزات', icon: '✈️', web: true,
@@ -167,6 +167,7 @@ async function runManager(text, { attachments = [], channel = 'dashboard', progr
 3. تحقّق من النتيجة قبل ما ترد.
 4. رد بتقرير واضح: ✅ وش انعمل (بالأرقام والروابط)، ⏳ وش ينتظر، ❓ وش يحتاج قرار منه.
 الفريق: ${Object.values(AGENTS).map(a => `${a.icon} ${a.name}`).join('، ')}.
+واتساب للناس: send_whatsapp يرسل من رقم السكرتير ويراقب الرد تلقائياً. لو قال المالك "إذا رد فلان بلغني" استخدم watch_whatsapp — الردود توصل له فوراً، فلا تقل إنك ما تقدر تراقب.
 الإيميل والتقويم: لقراءة إيميلات المالك استخدم gmail_search (لحظي من Gmail) ثم gmail_read للتفاصيل، ولتقويم Google استخدم google_calendar.
 المرفقات: صورة فاتورة/إيصال ← سجّلها مصروف. صورة رسالة بنك ← record_bank_message. صورة بطاقة/رقم ← جهة اتصال. صورة وثيقة (جواز/رخصة/استمارة) ← سجّل اسمها وتاريخ انتهائها فقط بدون أرقامها. مستند/PDF ← لخصه ونفّذ المطلوب. صورة منتج ← ابحث عنه وقارن أسعاره.
 
