@@ -354,7 +354,7 @@ async function settings(v) {
     return `✅ مربوط ${t.bot ? '(<b dir="ltr">@' + esc(t.bot) + '</b>)' : ''} — التنبيهات والموافقات توصلك هناك.`; })()}</div>
     <div class="small" style="margin-top:8px">${o.status.telegram.enabled ? 'تغيير البوت:' : 'الصق توكن البوت من <b>@BotFather</b>:'}</div>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input id="tg_tok" type="password" autocomplete="off" placeholder="123456789:AA..." dir="ltr" style="max-width:320px"><button class="sm" onclick="saveTg()">حفظ</button></div></div>
-  <div class="card"><h2>🎙️ الرسائل الصوتية</h2><div class="small" style="line-height:1.9">${s.voice && (s.voice.local || s.voice.groq) ? '✅ شغالة — كلم سكرتيرك بصوتك في واتساب أو تيليجرام.' : '⏳ تتجهز على السيرفر.'}${s.voice && s.voice.groq ? ' (بدقة عالية عبر Groq)' : ''}<br>
+  <div class="card"><h2>🎙️ الرسائل الصوتية</h2><div class="small" style="line-height:1.9">${s.voice && (s.voice.local || s.voice.groq) ? '✅ شغالة — كلم سكرتيرك بصوتك في واتساب أو تيليجرام.' : s.voice && s.voice.configured ? '⏳ تتجهز على السيرفر (أول مرة تنزّل المحرك، ممكن تاخذ 20-30 دقيقة).' : '❌ غير مفعلة.'}${s.voice && s.voice.groq ? ' (بدقة عالية عبر Groq)' : ''}<br>
     <b>اختياري لدقة أعلى باللهجة:</b> سوّ حساب مجاني في <a href="https://console.groq.com/keys" target="_blank">console.groq.com</a> ← API Keys ← Create، والصق المفتاح هنا:</div>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input id="groq_k" type="password" autocomplete="off" placeholder="gsk_..." dir="ltr" style="max-width:320px"><button class="sm" onclick="api('/api/settings',{groq_key:$('#groq_k').value.trim()}).then(()=>{toast('✅ انحفظ');go('settings')})">حفظ</button></div></div>
   <div class="card"><h2>🕌 تنبيه الصلاة</h2>

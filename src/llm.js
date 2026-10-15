@@ -14,7 +14,7 @@ async function callClaude({ system, messages, tools, model = C.MODEL, maxTokens 
       method: 'POST',
       headers: { 'x-api-key': C.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01', 'content-type': 'application/json' },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(180000)
+      signal: AbortSignal.timeout(300000)
     });
     const data = await res.json().catch(() => ({}));
     if (res.ok) return data;
@@ -25,6 +25,7 @@ async function callClaude({ system, messages, tools, model = C.MODEL, maxTokens 
   throw lastErr;
 }
 
+const AGENT_MAX_TOKENS = Number(process.env.AGENT_MAX_TOKENS || 16000);
 const textOf = content => (content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
 
 // استدعاء بسيط بدون أدوات (نص فقط)
@@ -50,7 +51,7 @@ async function runAgent({ system, input, history = [], tools = [], model = C.MOD
   let usage = { in: 0, out: 0 };
 
   for (let i = 0; i < maxSteps; i++) {
-    const data = await callClaude({ system, messages, tools: apiTools, model });
+    const data = await callClaude({ system, messages, tools: apiTools, model, maxTokens: AGENT_MAX_TOKENS });
     usage.in += (data.usage?.input_tokens || 0) + (data.usage?.cache_read_input_tokens || 0);
     usage.out += data.usage?.output_tokens || 0;
     messages.push({ role: 'assistant', content: data.content });
@@ -60,11 +61,19 @@ async function runAgent({ system, input, history = [], tools = [], model = C.MOD
     }
 
     if (data.stop_reason === 'pause_turn') continue;
+    // انقطع لأنه طول: إذا انقطع وسط أداة نطلب منه يكمل باختصار
+    if (data.stop_reason === 'max_tokens' && (data.content || []).some(b => b.type === 'tool_use')) {
+      messages.pop();
+      const partial = textOf(data.content);
+      if (partial) messages.push({ role: 'assistant', content: partial });
+      messages.push({ role: 'user', content: 'ردك طلع طويل وانقطع. كمّل بنفس المطلوب لكن قسّمه: لو مستند طويل اكتبه أقصر ومركز، ولو أدوات نفذها وحدة وحدة.' });
+      continue;
+    }
     if (data.stop_reason !== 'tool_use') {
       let text = textOf(data.content);
       if (!String(text || '').trim()) { // أحياناً ينهي بدون نص: نطلب الرد النهائي صراحة
         messages.push({ role: 'user', content: 'اكتب الحين ردك النهائي للمالك (وش انعمل وش الخطوة الجاية) بدون أدوات.' });
-        const fin = await callClaude({ system, messages, tools: apiTools, model, toolChoice: { type: 'none' } }).catch(() => null);
+        const fin = await callClaude({ system, messages, tools: apiTools, model, maxTokens: AGENT_MAX_TOKENS, toolChoice: { type: 'none' } }).catch(() => null);
         text = fin ? textOf(fin.content) : '';
       }
       if (!String(text || '').trim()) text = fallbackText(steps);
@@ -91,7 +100,7 @@ async function runAgent({ system, input, history = [], tools = [], model = C.MOD
   }
   // تجاوز الحد: نطلب خلاصة نهائية
   messages.push({ role: 'user', content: 'توقف عن استخدام الأدوات الآن واكتب خلاصة ما أنجزته وما بقي.' });
-  const final = await callClaude({ system, messages, tools: apiTools, model, toolChoice: { type: 'none' } }).catch(() => null);
+  const final = await callClaude({ system, messages, tools: apiTools, model, maxTokens: AGENT_MAX_TOKENS, toolChoice: { type: 'none' } }).catch(() => null);
   const text = final ? textOf(final.content) : '';
   return { text: String(text || '').trim() ? text : fallbackText(steps), steps, usage };
 }

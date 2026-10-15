@@ -21,7 +21,9 @@ async function local(buf, mime) {
   if (!base) throw new Error('خدمة الصوت غير مفعلة');
   const fd = new FormData();
   fd.append('audio_file', new Blob([buf], { type: mime || 'audio/ogg' }), 'voice.' + ext(mime));
-  const r = await fetch(`${base}/asr?task=transcribe&language=ar&output=json&encode=true&vad_filter=true`, { method: 'POST', body: fd, signal: AbortSignal.timeout(180000) });
+  const r = await fetch(`${base}/asr?task=transcribe&language=ar&output=json&encode=true&vad_filter=true`, { method: 'POST', body: fd, signal: AbortSignal.timeout(180000) })
+    .catch(e => { throw new Error(/fetch failed|ENOTFOUND|ECONNREFUSED|EAI_AGAIN/i.test(String(e.cause && e.cause.code || e.message)) || /fetch failed/.test(e.message) ? 'خدمة الصوت لسا تتجهز على السيرفر (أول مرة تاخذ شوي)' : e.message); });
+  if (r.status === 503 || r.status === 502) throw new Error('خدمة الصوت لسا تتجهز');
   if (!r.ok) throw new Error('Whisper HTTP ' + r.status);
   const t = await r.text();
   try { return JSON.parse(t).text || ''; } catch (_) { return t; }
@@ -45,6 +47,12 @@ async function transcribe(base64, mime = 'audio/ogg') {
   throw last || new Error('ما قدرت أفهم الصوت');
 }
 
+// هل خدمة Whisper على السيرفر جاهزة؟
+async function localReady() {
+  const base = (process.env.WHISPER_URL || '').replace(/\/$/, '');
+  if (!base) return false;
+  try { const r = await fetch(base + '/docs', { signal: AbortSignal.timeout(3000) }); return r.ok; } catch (_) { return false; }
+}
 const enabled = async () => !!(process.env.WHISPER_URL || process.env.GROQ_API_KEY || process.env.OPENAI_API_KEY || (await db.getSettings().catch(() => ({}))).groq_key);
 
-module.exports = { transcribe, enabled };
+module.exports = { transcribe, enabled, localReady };
