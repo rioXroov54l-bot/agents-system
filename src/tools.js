@@ -93,7 +93,8 @@ const executors = {
     await ch.sendWhatsApp(p.phone, p.text);
     if (p.customer_id) await db.q('INSERT INTO interactions (customer_id, channel, direction, summary) VALUES ($1,$2,$3,$4)', [p.customer_id, 'whatsapp', 'out', p.text.slice(0, 200)]);
     await db.log('wa_out', `واتساب إلى ${p.phone}`);
-    await require('./watch').add(ch.saNumber(p.phone), { note: 'رد على رسالة: ' + p.text.slice(0, 80), days: 14 }).catch(() => {});
+    await require('./watch').add(ch.saNumber(p.phone), { note: 'رد على رسالة: ' + p.text.slice(0, 80), days: 14, outbound: p.text }).catch(() => {});
+    await appendConversation(ch.saNumber(p.phone), null, 'agent', p.text).catch(() => {});
     return `✅ انرسلت رسالة واتساب إلى ${p.phone} — وأي رد منه بيوصلك تلقائياً لمدة 14 يوم`;
   },
   async send_quote(p) {
@@ -462,12 +463,13 @@ def('move_appointment', 'عدّل موعد مسجل (تأجيل/تقديم/تغ�
 
 def('update_my_settings', 'غيّر إعدادات المالك: ساعة الموجز الصباحي، ساعة ملخص المساء، وين توصله التنبيهات، أو بياناته (الاسم، المدينة، المطار، العائلة، التفضيلات، التوقيع).',
   S({ morning_hour: int('ساعة الموجز الصباحي 0-23'), evening_hour: int('ساعة ملخص المساء 0-23'), notify_channel: str('auto | telegram | whatsapp | both'),
-    name: str('الاسم'), city: str('المدينة'), home_airport: str('رمز المطار'), family: str('العائلة'), preferences: str('التفضيلات'), signature: str('توقيع الإيميل') }),
+    thank_replies: bool('يشكر اللي يردون على رسائلنا ويبلغهم إن ردهم بيوصل (افتراضي نعم)'), name: str('الاسم'), city: str('المدينة'), home_airport: str('رمز المطار'), family: str('العائلة'), preferences: str('التفضيلات'), signature: str('توقيع الإيميل') }),
   async (a) => {
     const s = await db.getSettings(), done = [];
     if (a.morning_hour !== undefined) { await db.setSetting('morning_hour', Math.min(23, Math.max(0, a.morning_hour))); done.push(`الموجز الصباحي الساعة ${a.morning_hour}`); }
     if (a.evening_hour !== undefined) { await db.setSetting('report_hour', Math.min(23, Math.max(0, a.evening_hour))); done.push(`ملخص المساء الساعة ${a.evening_hour}`); }
     if (a.notify_channel && ['auto', 'telegram', 'whatsapp', 'both'].includes(a.notify_channel)) { await db.setSetting('notify_channel', a.notify_channel); done.push(`التنبيهات: ${a.notify_channel}`); }
+    if (a.thank_replies !== undefined) { await db.setSetting('watch_ack', !!a.thank_replies); done.push(`شكر المردودين: ${a.thank_replies ? 'مفعل' : 'موقف'}`); }
     const pf = {}; for (const k of ['name', 'city', 'home_airport', 'family', 'preferences', 'signature']) if (a[k] !== undefined) pf[k] = a[k];
     if (Object.keys(pf).length) { await db.setSetting('profile', { ...(s.profile || {}), ...pf }); done.push('بياناتك: ' + Object.keys(pf).join('، ')); }
     return done.length ? '✅ انحفظ: ' + done.join(' | ') : 'ما فيه شي يتغير';

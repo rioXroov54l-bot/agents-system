@@ -60,6 +60,22 @@ async function handleOwner(num, { text, attachment, voice }) {
   } finally { clearInterval(timer); }
 }
 
+// رد شكر قصير ومهذب على اللي راسلناهم نيابة عن المالك (بدون أي التزام)
+async function ackReply(watched, theirText, ownerName) {
+  const owner = ownerName ? 'الأستاذ ' + ownerName : 'صاحب الرقم';
+  const fallback = `شكراً لك 🙏 وصلت رسالتك، وبوصلها لـ${owner} على طول.`;
+  const out = await require('./llm').ask(
+    `أنت السكرتير الآلي لـ${owner} على واتساب. أرسلت لهذا الشخص رسالة نيابة عنه، وهذا رده عليك. اكتب رد قصير جداً (سطر أو سطرين) مهذب وبلهجة سعودية لطيفة:
+- إذا وافق أو أكد أو قال تم/أبشر/تمام ← اشكره على التأكيد وقل إنك بلغت ${owner}.
+- إذا سأل سؤال أو طلب شي أو اقترح وقت ← اشكره وقل إن رسالته وصلت وبتوصلها لـ${owner} ويرد عليه قريب.
+- إذا اعتذر أو رفض ← اشكره بلطف وقل إنك بتبلغ ${owner}.
+- إذا كانت تحية أو شكر فقط ← رد التحية باختصار.
+ممنوع: تلتزم بموعد أو مبلغ أو وعد، أو تجاوب عن ${owner} بمعلومات، أو تكرر نص رسالته. إيموجي واحد كحد أقصى. اكتب نص الرد فقط.`,
+    `رسالتنا له: ${watched.last_out_text || watched.note || '—'}\n\nرده: ${theirText}`, { model: C.FAST_MODEL, maxTokens: 150 });
+  const t = String(out || '').trim().replace(/^["«]|["»]$/g, '');
+  return t && t.length < 400 ? t : fallback;
+}
+
 async function handleEvolution(body) {
   const event = String(body.event || '').toLowerCase().replace(/_/g, '.');
   if (event === 'connection.update') {
@@ -93,9 +109,20 @@ async function handleEvolution(body) {
         ? `📩 **رد من ${who}** (${num})${watched.note ? '\n📝 ' + watched.note : ''}\n\n${what}`
         : `📨 **رسالة لرقم السكرتير من ${who}** (${num})\n\n${what}\n\n(ما رديت عليه. قل لي «رد عليه ...» إذا تبي أرد)`;
       await appendConversation(num, msg.pushName, 'customer', what).catch(() => {});
-      await db.q("INSERT INTO owner_chat (role, text, channel) VALUES ('agent', $1, 'notify')", [note.replace(/\*\*/g, '')]).catch(() => {});
-      await db.log('whatsapp', `رسالة من ${who} (…${num.slice(-4)}) وصّلتها لك`);
-      ch.notifyOwner(note).catch(e => console.error('watch notify', e.message));
+      // اللي راسلناهم: نرد عليهم بشكر مهذب (مرة لكل رسالة نرسلها لهم، أو كل 3 ساعات) ونبلغهم إن ردهم بيوصل
+      let ack = '';
+      if (watched && st.watch_ack !== false) {
+        const fresh = !watched.acked_at || (watched.last_out && watched.last_out > watched.acked_at) || Date.now() - new Date(watched.acked_at).getTime() > 3 * 3600e3;
+        if (fresh) {
+          ack = await ackReply(watched, what, (st.profile || {}).name).catch(() => '');
+          if (ack) { await ch.sendWhatsApp(num, ack).catch(e => { console.error('ack', e.message); ack = ''; }); }
+          if (ack) { await W.update(num, { acked_at: new Date().toISOString() }); await appendConversation(num, null, 'agent', ack).catch(() => {}); }
+        }
+      }
+      const full = note + (ack ? `\n\n🤖 رديت عليه: «${ack}»` : '');
+      await db.q("INSERT INTO owner_chat (role, text, channel) VALUES ('agent', $1, 'notify')", [full.replace(/\*\*/g, '')]).catch(() => {});
+      await db.log('whatsapp', `رسالة من ${who} (…${num.slice(-4)}) وصّلتها لك${ack ? ' وشكرته' : ''}`);
+      ch.notifyOwner(full).catch(e => console.error('watch notify', e.message));
       continue;
     }
     if (!st.reply_others) { // السكرتير يرد عليك أنت بس

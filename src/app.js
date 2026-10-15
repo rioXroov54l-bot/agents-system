@@ -343,7 +343,7 @@ app.post('/api/admin/export', wrap(async (req, res) => {
 app.post('/api/bills/:id/pay', wrap(async (req, res) => res.json({ message: await T.pay_bill.handler({ id: Number(req.params.id), amount: req.body.amount }) })));
 app.post('/api/shortcut/rotate', wrap(async (_req, res) => { await db.setSetting('shortcut_token', crypto.randomBytes(18).toString('hex')); res.json({ url: `${C.PUBLIC_URL}/hook/${await shortcutToken()}` }); }));
 app.post('/api/settings', wrap(async (req, res) => {
-  const allowed = ['profile', 'budgets', 'autonomy', 'report_hour', 'morning_hour', 'weekly_review', 'company', 'notify_channel', 'reply_others', 'forward_others'];
+  const allowed = ['profile', 'budgets', 'autonomy', 'report_hour', 'morning_hour', 'weekly_review', 'company', 'notify_channel', 'reply_others', 'forward_others', 'watch_ack'];
   for (const k of allowed) if (req.body[k] !== undefined) await db.setSetting(k, req.body[k]);
   await db.log('settings', 'تحديث الإعدادات');
   res.json({ message: '✅ انحفظت الإعدادات' });
