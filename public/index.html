@@ -355,9 +355,10 @@ async function settings(v) {
     <div class="small" style="margin-top:8px">${o.status.telegram.enabled ? 'تغيير البوت:' : 'الصق توكن البوت من <b>@BotFather</b>:'}</div>
     <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><input id="tg_tok" type="password" autocomplete="off" placeholder="123456789:AA..." dir="ltr" style="max-width:320px"><button class="sm" onclick="saveTg()">حفظ</button></div></div>
   <div class="card"><h2>🔒 مين يرد عليه السكرتير؟</h2>
-    <select onchange="api('/api/settings',{reply_others:this.value==='1'}).then(()=>toast('✅ انحفظ'))">
-      <option value="0" ${!s.reply_others?'selected':''}>أنا بس (يتجاهل أي أحد ثاني)</option>
-      <option value="1" ${s.reply_others?'selected':''}>الكل (يرد على الناس نيابة عني)</option>
+    <select onchange="api('/api/settings',{reply_others:this.value==='all',forward_others:this.value!=='silent'}).then(()=>toast('✅ انحفظ'))">
+      <option value="fwd" ${!s.reply_others&&s.forward_others?'selected':''}>أنا بس — ورسائل الناس يوصلني نصها بدون ما يرد عليهم</option>
+      <option value="silent" ${!s.reply_others&&!s.forward_others?'selected':''}>أنا بس — ويتجاهل رسائل الناس تماماً</option>
+      <option value="all" ${s.reply_others?'selected':''}>الكل (يرد على الناس نيابة عني)</option>
     </select></div>
   <div class="card"><h2>🔔 وين توصلك التنبيهات؟</h2>
     <select id="n_ch" onchange="api('/api/settings',{notify_channel:this.value}).then(()=>toast('✅ انحفظ'))">

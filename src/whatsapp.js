@@ -76,18 +76,21 @@ async function handleEvolution(body) {
     const num = ch.waNumber(pn || jid);
     const parsed = extract(msg);
     if (isOwner(num)) { handleOwner(num, parsed).catch(e => console.error('wa owner', e.message)); continue; }
-    const watched = await W.get(num);
-    if (watched) { // شخص تحت المراقبة: نوصّل رده للمالك ولا نرد عليه
+    const watched = await W.get(num), st = await db.getSettings();
+    // شخص تحت المراقبة، أو وضع «أبلغني برسائل الناس»: نوصّل رسالته للمالك ولا نرد عليه
+    if (watched || (!st.reply_others && st.forward_others !== false)) {
       const what = parsed.text || (parsed.attachment ? (parsed.attachment.type === 'image' ? '[صورة]' : '[مستند]') : parsed.voice ? '[رسالة صوتية]' : `[${parsed.kind}]`);
-      const who = msg.pushName || watched.name || num;
-      const note = `📩 **رد من ${who}** (${num})${watched.note ? '\n📝 ' + watched.note : ''}\n\n${what}`;
+      const who = msg.pushName || (watched && watched.name) || num;
+      const note = watched
+        ? `📩 **رد من ${who}** (${num})${watched.note ? '\n📝 ' + watched.note : ''}\n\n${what}`
+        : `📨 **رسالة لرقم السكرتير من ${who}** (${num})\n\n${what}\n\n(ما رديت عليه. قل لي «رد عليه ...» إذا تبي أرد)`;
       await appendConversation(num, msg.pushName, 'customer', what).catch(() => {});
       await db.q("INSERT INTO owner_chat (role, text, channel) VALUES ('agent', $1, 'notify')", [note.replace(/\*\*/g, '')]).catch(() => {});
-      await db.log('whatsapp', `رد من ${who} (…${num.slice(-4)}) وصّلته لك`);
+      await db.log('whatsapp', `رسالة من ${who} (…${num.slice(-4)}) وصّلتها لك`);
       ch.notifyOwner(note).catch(e => console.error('watch notify', e.message));
       continue;
     }
-    if (!(await db.getSettings()).reply_others) { // الوضع الافتراضي: السكرتير يرد عليك أنت بس
+    if (!st.reply_others) { // السكرتير يرد عليك أنت بس
       db.log('whatsapp', `تجاهلت رسالة من ${msg.pushName || ''} (…${num.slice(-4)})`).catch(() => {});
       continue;
     }
