@@ -123,7 +123,7 @@ async function finishRun(run, result, status = 'done') {
 }
 
 // تشغيل وكيل متخصص
-async function runSpecialist(key, task, { input, onStep } = {}) {
+async function runSpecialist(key, task, { input, onStep, byOwner = false } = {}) {
   const a = AGENTS[key];
   if (!a) throw new Error('وكيل غير معروف: ' + key);
   const tools = pick(...a.tools); if (a.web) tools.push(WEB_SEARCH);
@@ -131,7 +131,7 @@ async function runSpecialist(key, task, { input, onStep } = {}) {
   const run = await startRun(key, task);
   await db.log('agent', `${a.icon} ${a.name} بدأ: ${String(task).slice(0, 120)}`, key);
   try {
-    const result = await llm.runAgent({ system, input: input || task, tools, ctx: { agent: key, agentIcon: a.icon }, onStep, maxSteps: 20 });
+    const result = await llm.runAgent({ system, input: input || task, tools, ctx: { agent: key, agentIcon: a.icon, byOwner }, onStep, maxSteps: 20 });
     await finishRun(run, result);
     return result.text;
   } catch (e) {
@@ -148,7 +148,7 @@ const DELEGATE = {
   input_schema: { type: 'object', properties: { agent: { type: 'string', enum: Object.keys(AGENTS) }, task: { type: 'string' } }, required: ['agent', 'task'] },
   handler: async ({ agent, task }, ctx) => {
     if (ctx.progress) await ctx.progress(`${AGENTS[agent].icon} ${AGENTS[agent].name} يشتغل...`);
-    return runSpecialist(agent, task);
+    return runSpecialist(agent, task, { byOwner: !!ctx.byOwner });
   }
 };
 
@@ -176,6 +176,7 @@ async function runManager(text, { attachments = [], channel = 'dashboard', progr
 3. تحقّق من النتيجة قبل ما ترد.
 4. رد بتقرير واضح: ✅ وش انعمل (بالأرقام والروابط)، ⏳ وش ينتظر، ❓ وش يحتاج قرار منه.
 الفريق: ${Object.values(AGENTS).map(a => `${a.icon} ${a.name}`).join('، ')}.
+**تنفيذ مباشر:** إذا طلب المالك إرسال رسالة واتساب أو إيميل لشخص، صغ الرسالة باحترافية وأرسلها فوراً — لا تطلب منه تأكيد ولا موافقة، ولا تحوله لتيليجرام. اسأل فقط إذا الرقم/المستلم أو المقصود غير واضح. بعد الإرسال قل له: انرسلت لمين ومتى والنص.
 قدراتك الفعلية (استخدمها ولا تقل «ما أقدر» وهي موجودة):
 • واتساب للناس: send_whatsapp (الحين) أو schedule_message (في وقت محدد حتى لو المالك نايم — مثل «أرسل له 4:30 الفجر»)، والرد يوصل المالك تلقائياً.
 • Gmail كامل: gmail_search/gmail_read/gmail_send/gmail_reply/gmail_draft/gmail_manage.
@@ -193,7 +194,7 @@ ${await companyContext()}`;
   try {
     const result = await llm.runAgent({
       system, input: content, history: await ownerHistory(), tools, maxSteps: 24,
-      ctx: { agent: 'manager', agentIcon: '🧠', progress }
+      ctx: { agent: 'manager', agentIcon: '🧠', progress, byOwner: true }
     });
     await finishRun(run, result);
     await db.q('INSERT INTO owner_chat (role, text, channel) VALUES ($1,$2,$3), ($4,$5,$3)', ['owner', text || '[مرفق]', channel, 'agent', result.text]);

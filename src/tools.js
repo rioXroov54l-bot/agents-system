@@ -75,6 +75,11 @@ async function createApproval(kind, summary, payload) {
 
 // ---------- منفذات الإجراءات (تُستدعى مباشرة أو بعد الموافقة) ----------
 const executors = {
+  async gmail_reply(p) {
+    const r = await require('./google').gmailReply(p);
+    await db.log('email_out', `رد على إيميل: ${r.subject}`);
+    return { ...r, message: `✅ انرسل الرد إلى ${r.to}` };
+  },
   async send_email(p) {
     await ch.sendEmail({ to: p.to, subject: p.subject, body: p.body });
     if (p.customer_id) {
@@ -509,10 +514,16 @@ def('cancel_scheduled', 'ألغ رسالة مجدولة برقمها.', S({ id: 
 // ---------- Gmail وتقويم Google: إدارة كاملة ----------
 def('gmail_send', 'أرسل إيميل من Gmail المالك مباشرة (لأي شخص يطلبه المالك). للأشخاص الخارجيين اكتب بأسلوب مهذب واحترافي باسم المالك.',
   S({ to: str('الإيميل (أو أكثر مفصولة بفاصلة)'), cc: str('نسخة إلى (اختياري)'), subject: str('العنوان'), body: str('النص كاملاً') }, ['to', 'subject', 'body']),
-  async (a) => { const r = await G.gmailSend(a); await db.log('email_out', `إيميل إلى ${a.to}: ${a.subject}`); return { ...r, message: `✅ انرسل الإيميل إلى ${a.to}` }; });
+  async (a, ctx = {}) => {
+    if (!ctx.byOwner) return guardedExternal('send_email', { ...a, agent: ctx.agent }, { text: a.body, purpose: `إيميل إلى ${a.to}: ${a.subject}` });
+    const r = await G.gmailSend(a); await db.log('email_out', `إيميل إلى ${a.to}: ${a.subject}`); return { ...r, message: `✅ انرسل الإيميل إلى ${a.to}` };
+  });
 def('gmail_reply', 'رد على إيميل في نفس المحادثة (بالمعرّف من gmail_search).',
   S({ id: str('معرّف الإيميل'), body: str('نص الرد'), reply_all: bool('رد على الكل') }, ['id', 'body']),
-  async (a) => { const r = await G.gmailReply(a); await db.log('email_out', `رد على إيميل: ${r.subject}`); return r; });
+  async (a, ctx = {}) => {
+    if (!ctx.byOwner) return guardedExternal('gmail_reply', a, { text: a.body, purpose: `رد على إيميل #${a.id}` });
+    return executors.gmail_reply(a);
+  });
 def('gmail_draft', 'جهّز مسودة إيميل في Gmail بدون إرسال (للمراجعة). استخدمها لما المالك يبي يشوف قبل الإرسال.',
   S({ to: str('الإيميل'), cc: str('نسخة'), subject: str('العنوان'), body: str('النص') }, ['subject', 'body']), async (a) => G.gmailDraft(a));
 def('gmail_manage', 'نظّم إيميلات: read (مقروء) | unread | archive (أرشفة) | inbox | star | unstar | important | not_important | spam | trash (سلة المحذوفات).',
@@ -552,13 +563,14 @@ def('google_calendar', 'اعرض مواعيد تقويم Google حق المال�
 def('send_email', 'أرسل إيميل من Gmail الشركة. للعملاء يمر على مراجع الجودة وحدود الصلاحية.',
   S({ to: str('الإيميل'), subject: str('الموضوع'), body: str('النص كاملاً موقّعاً باسم الشركة'), customer_id: int('عميل مرتبط'), internal: bool('true لو المرسل إليه المالك أو موظف') }, ['to', 'subject', 'body']),
   async (a, ctx) => {
-    if (a.internal) return executors.send_email({ ...a, agent: ctx.agent });
+    if (a.internal || ctx.byOwner) return executors.send_email({ ...a, agent: ctx.agent });
     return guardedExternal('send_email', { ...a, agent: ctx.agent }, { text: a.body, purpose: `إيميل إلى ${a.to}: ${a.subject}` });
   });
 
 def('send_whatsapp', 'أرسل رسالة واتساب من رقم السكرتير لأي شخص يطلبه المالك. الرقم يقبل 05xxxxxxxx أو 9665xxxxxxxx. النتيجة تقول إذا انرسلت فعلاً أو تنتظر موافقة — بلّغ المالك بالنتيجة كما هي.',
   S({ phone: str('رقم الجوال'), text: str('النص'), customer_id: int('جهة اتصال (اختياري)') }, ['phone', 'text']),
-  async (a) => guardedExternal('send_whatsapp', a, { text: a.text, purpose: `واتساب إلى ${a.phone}` }));
+  async (a, ctx = {}) => ctx.byOwner ? executors.send_whatsapp(a) // المالك طلبها بنفسه: ترسل فوراً بدون موافقة
+    : guardedExternal('send_whatsapp', a, { text: a.text, purpose: `واتساب إلى ${a.phone}` }));
 
 def('plan_trip', 'ابدأ تخطيط رحلة/سفر (طيران، فندق). بعدها ابحث عن خيارات حقيقية واحفظها بـ save_trip_options.',
   S({ title: str('العنوان'), origin: str('من'), destination: str('إلى'), depart_date: str('YYYY-MM-DD'), return_date: str('YYYY-MM-DD'), travelers: int('عدد المسافرين'), budget: numb('الميزانية بالريال'), notes: str('تفضيلات: درجة، شركة، وقت، فندق قريب من...') }, ['title', 'destination']),

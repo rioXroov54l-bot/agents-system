@@ -185,7 +185,7 @@ app.post('/api/owner', wrap(async (req, res) => {
   if (!text && !attachments.length) return res.json({ reply: '' });
   res.json({ reply: await agents.runManager(text, { attachments, channel: 'dashboard' }) });
 }));
-app.post('/api/agent/:key', wrap(async (req, res) => res.json({ reply: await agents.runSpecialist(req.params.key, String(req.body.task || '')) })));
+app.post('/api/agent/:key', wrap(async (req, res) => res.json({ reply: await agents.runSpecialist(req.params.key, String(req.body.task || ''), { byOwner: true }) })));
 
 // CRUD عام
 const ENT = {

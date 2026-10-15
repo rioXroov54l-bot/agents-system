@@ -14,7 +14,7 @@ async function decide(id, approve, editedText) {
   }
   if (editedText) {
     if (ap.kind === 'customer_reply' || ap.kind === 'send_whatsapp') payload.text = editedText;
-    else if (ap.kind === 'send_email') payload.body = editedText;
+    else if (ap.kind === 'send_email' || ap.kind === 'gmail_reply') payload.body = editedText;
     else payload.message = editedText;
     if (ap.kind === 'customer_reply' && payload.customerText) {
       await db.q("INSERT INTO knowledge (kind, text) VALUES ('reply_example', $1)", [`العميل: ${payload.customerText}\nالرد المعتمد: ${editedText}`]);
