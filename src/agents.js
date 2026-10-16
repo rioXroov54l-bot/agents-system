@@ -14,6 +14,7 @@ require('./life'); // الصحة، الممتلكات، التواصل، الا�
 require('./pricewatch'); // متابعة الأسعار والتوفر
 require('./power'); // ملفات وتحليل وخدمات خارجية
 require('./web'); // التنفيذ على المواقع بمتصفح حقيقي
+const H = require('./health'); // الاستهلاك، المراقبة، الطلبات المحفوظة، قوة العقل
 const personal = require('./personal');
 
 const WEB_SEARCH = { spec: { type: 'web_search_20250305', name: 'web_search', max_uses: 10, user_location: { type: 'approximate', country: 'SA', city: 'Riyadh', timezone: 'Asia/Riyadh' } } };
@@ -199,7 +200,7 @@ async function runSpecialist(key, task, { input, onStep, byOwner = false, channe
   try {
     const ctx = { agent: key, agentIcon: a.icon, byOwner, channel };
     let result;
-    try { result = await llm.runAgent({ system, input: input || task, tools, ctx, onStep, maxSteps: a.steps || 20, skills: a.codeExec ? a.skills : undefined }); }
+    try { result = await llm.runAgent({ system, input: input || task, tools, ctx, onStep, maxSteps: a.steps || 20, skills: a.codeExec ? a.skills : undefined, model: await H.modelFor(key) }); }
     finally { for (const f of ctx.cleanup || []) await f(); } // نقفل المتصفح وغيره
     let text = result.text;
     if (result.files && result.files.length) {
@@ -270,6 +271,7 @@ async function runManagerInner(text, { attachments = [], channel = 'dashboard', 
 • **ملفات حقيقية وتحليل وكود**: Excel بمعادلات ورسوم، PowerPoint، Word، PDF، تحليل ملف أرسله المالك، حسابات معقدة، رسوم بيانية ← فوّض لـ builder (وكيل الملفات والتحليل). إذا فيه ملف مرفق من المالك مرر file_ids.
 • **خدمات خارجية متصلة (MCP)**: ${mcp.length ? 'متصل الآن: ' + mcp.map(m => m.label || m.name).join('، ') + ' — استخدم أدواتها مباشرة لتنفيذ طلبات المالك فيها (مثلاً GitHub: مستودعات/ملفات/Issues، Zapier: آلاف التطبيقات). أي تغيير مهم أو حذف في خدمة خارجية اشرح للمالك وش بتسوي قبل ما تنفذه.' : 'ما فيه خدمات متصلة حالياً؛ لو طلب المالك شي في تطبيق خارجي (GitHub، Notion، Trello...) قل له يربطه من لوحة التحكم ← الإعدادات ← الخدمات المتصلة.'}
 • **مستندات احترافية** publish_document: أي تقرير/دراسة/مقارنة/خطاب/سيرة ذاتية/دليل ← رابط أنيق يحفظ PDF. الطلبات الكبيرة فوّضها لوكيل البحث والتقارير.
+• **حالة النظام والأعطال**: أي سؤال «هل كل شي شغال؟» أو عن خطأ صار ← system_status (فحص حقيقي) وانقل نتيجته بصدق — لا تقول «كل شي شغال» بدون فحص. **الاستهلاك والتكلفة** ← usage_report.
 • **التنفيذ الفعلي في المواقع** (احجز موعد، عبّي نموذج، قدّم طلب، استعلم عن طلب/شحنة) ← فوّض لـ web (وكيل التنفيذ على المواقع) عنده متصفح حقيقي ينفذ بنفسه ويسأل المالك وقتها عن رمز التحقق أو الاختيارات. **لا تقل للمالك «احجز بنفسك» أو تعطيه خطوات بدل التنفيذ** إلا إذا وكيل المواقع حاول وما قدر. أعطه في المهمة: الجهة، الخدمة، المدينة/الفرع، التاريخ المفضل، وأي بيانات عندك.
 • **المعاملات الحكومية** (أبشر، ناجز، تجديد، تأشيرات...) فوّضها لوكيل المعاملات الحكومية (للشرح والتجهيز)، والحجز الفعلي لوكيل المواقع. **الصحة** (أدوية بمواعيد، قراءات، تحاليل) لوكيل الصحة.
 • الممتلكات والصيانة والضمانات (add_asset/add_maintenance/log_maintenance)، التواصل مع الناس (keep_in_touch/contacted)، الأسواق والمحفظة (market_quote/portfolio_report/add_holding).
@@ -288,7 +290,7 @@ ${await companyContext()}`;
   await db.log('owner', String(text || '[مرفق]').slice(0, 120), 'manager');
   try {
     const result = await llm.runAgent({
-      system, input: content, history: isolated ? [] : await ownerHistory(), tools, maxSteps: 24, mcpServers: mcp,
+      system, input: content, history: isolated ? [] : await ownerHistory(), tools, maxSteps: 24, mcpServers: mcp, model: await H.modelFor('manager'),
       ctx: { agent: 'manager', agentIcon: '🧠', progress, byOwner: !isolated, channel }
     });
     await finishRun(run, result);

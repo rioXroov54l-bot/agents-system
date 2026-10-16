@@ -71,7 +71,7 @@ async function searchCheck(w) {
     messages: [{ role: 'user', content: `المنتج: ${w.label}
 الرابط: ${w.url}
 وش سعره الحين وهل هو متوفر للشراء أونلاين؟` }],
-    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3, user_location: { type: 'approximate', country: 'SA', city: 'Riyadh', timezone: 'Asia/Riyadh' } }]
+    tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 3, user_location: { type: 'approximate', country: 'SA', city: 'Riyadh', timezone: 'Asia/Riyadh' } }], tag: 'pricewatch'
   });
   const r = llm.parseJson(llm.textOf(data.content)) || {};
   if (!r.price && typeof r.available !== 'boolean') throw new Error('ما قدرت أتأكد بالبحث');

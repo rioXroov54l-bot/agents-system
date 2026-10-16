@@ -347,6 +347,14 @@ async function settings(v) {
     <div class="grid two"><div class="field"><label>ساعة الموجز الصباحي</label><input id="h_m" type="number" min="0" max="23" value="${esc(s.morning_hour)}"></div><div class="field"><label>ساعة ملخص المساء</label><input id="h_r" type="number" min="0" max="23" value="${esc(s.report_hour)}"></div></div>
     <button class="primary" onclick="saveSettings()">حفظ</button>
   </div>
+  <div class="card" id="aicard"><h2>🧠 العقل والاستهلاك</h2>
+    <div class="field"><label>قوة عقل السكرتير</label><select id="ai_mode" onchange="api('/api/settings',{ai_mode:this.value}).then(()=>toast('✅ انحفظ'))">
+      ${[['economy','⚡ اقتصادي (Haiku) — أرخص بكثير، ممتاز للمهام اليومية'],['balanced','⚖️ متوازن (Sonnet) — قوي وسعره معقول (الافتراضي)'],['max','🚀 الأقوى (Opus) — أذكى وأدق للمهام المعقدة، تقريباً ضعف التكلفة']].map(([v,l]) => `<option value="${v}" ${(s.ai_mode||'balanced')===v?'selected':''}>${l}</option>`).join('')}
+    </select></div>
+    <div class="field"><label>الميزانية الشهرية بالدولار (ينبهك عند 80% و100% — 0 = بدون حد)</label>
+      <div style="display:flex;gap:6px;flex-wrap:wrap"><input id="ai_budget" type="number" min="0" step="5" value="${esc(s.monthly_budget||0)}" style="max-width:140px" dir="ltr"><button class="sm" onclick="api('/api/settings',{monthly_budget:Number($('#ai_budget').value)||0}).then(()=>{toast('✅ انحفظت');loadUsage()})">حفظ</button></div></div>
+    <div id="usagebox" class="small">⏳</div>
+  </div>
   <div class="card" id="wacard"><h2>🟢 واتساب (رقم السكرتير)</h2><div id="wabox" class="small">⏳</div></div>
   <div class="card"><h2>📱 تيليجرام (التنبيهات)</h2><div class="small" style="line-height:1.9">${(() => { const t = o.status.telegram;
     if (!t.enabled) return 'غير مربوط.';
@@ -391,7 +399,27 @@ async function settings(v) {
     <button class="sm" onclick="api('/api/admin/migrate-code',{}).then(r=>{$('#mcode').innerHTML='الكود: <code>'+r.code+'</code>'})">إنشاء كود نقل</button> <span id="mcode" class="small"></span></div>
   <div class="card small" style="line-height:1.9">🔒 <b>للأمان:</b> السكرتير ما يدفع ولا يحوّل ولا يحفظ كلمات سر أو أرقام بطاقات أو رموز OTP. الدفع دائماً منك عبر الروابط اللي يجهزها لك.</div>`;
   loadWA(); clearInterval(waTimer); waTimer = setInterval(loadWA, 20000);
-  loadMCP();
+  loadMCP(); loadUsage();
+}
+const AG = { manager: '🧠 المدير', builder: '🛠️ الملفات', web: '🌐 المواقع', research: '🔎 البحث', travel: '✈️ السفر', money: '💰 المالية', shopping: '🛒 التسوق', writer: '✍️ الكتابة', planner: '🎯 التخطيط', gov: '🏛️ الحكومية', health: '🩺 الصحة', secretary: '📋 السكرتير', quick: '⚡ سريعة', pricewatch: '🔔 الأسعار', other: 'أخرى' };
+const HN = { ai: 'الذكاء الاصطناعي', whatsapp: 'واتساب', browser: 'المتصفح', voice: 'الصوت', google: 'Google', disk: 'المساحة' };
+async function loadUsage() {
+  const box = $('#usagebox'); if (!box) return;
+  const u = await api('/api/usage').catch(e => ({ error: e.message })); if (u.error) { box.textContent = u.error; return; }
+  const $$ = v => '$' + Number(v || 0).toFixed(Number(v) < 1 ? 3 : 2), sar = v => '≈ ' + (Number(v || 0) * 3.75).toFixed(2) + ' ريال';
+  const budget = Number($('#ai_budget') && $('#ai_budget').value) || 0, pct = budget ? Math.min(100, Math.round(u.month / budget * 100)) : 0;
+  const max = Math.max(0.001, ...u.daily.map(d => Number(d.cost)));
+  const health = Object.entries(u.health || {}).map(([k, h]) => `<span style="white-space:nowrap">${h.ok ? '🟢' : '🔴'} ${HN[k] || k}</span>`).join(' · ');
+  box.innerHTML = `${u.credit_out ? '<div style="color:var(--bad);font-weight:700;margin-bottom:6px">🔴 رصيد Anthropic خالص — اشحن من console.anthropic.com ← Billing (الطلبات محفوظة وبتتنفذ بعد الشحن)</div>' : ''}
+    <div class="grid two" style="gap:8px;margin:6px 0">
+      <div><b>اليوم</b><br>${$$(u.today)} <span style="opacity:.6">${sar(u.today)}</span></div>
+      <div><b>هالشهر</b><br>${$$(u.month)} <span style="opacity:.6">${sar(u.month)}</span> — ${u.calls} طلب</div></div>
+    ${budget ? `<div style="background:rgba(127,127,127,.2);border-radius:6px;height:10px;overflow:hidden;margin:4px 0"><div style="width:${pct}%;height:100%;background:${pct >= 100 ? 'var(--bad)' : pct >= 80 ? '#e0a100' : 'var(--ok,#2a9d5c)'}"></div></div><div>${pct}% من ميزانية $${budget}</div>` : ''}
+    ${u.daily.length ? `<div style="display:flex;align-items:flex-end;gap:3px;height:60px;margin:10px 0 2px" dir="ltr">${u.daily.map(d => `<div title="${d.day}: $${d.cost}" style="flex:1;background:var(--accent,#4f7cff);opacity:.8;border-radius:3px 3px 0 0;height:${Math.max(3, Math.round(Number(d.cost) / max * 100))}%"></div>`).join('')}</div><div style="opacity:.6">آخر 14 يوم</div>` : ''}
+    ${u.byAgent.length ? '<div style="margin-top:8px"><b>وين يروح الاستهلاك (30 يوم):</b><br>' + u.byAgent.slice(0, 8).map(a => `${AG[a.agent] || a.agent}: $${a.cost} (${a.calls})`).join(' · ') + '</div>' : ''}
+    ${health ? `<div style="margin-top:8px"><b>المراقبة:</b> ${health}</div>` : ''}
+    ${u.pending.filter(p => p.status === 'pending' || p.status === 'running').length ? '<div style="margin-top:8px"><b>⏳ طلبات محفوظة:</b><br>' + u.pending.filter(p => p.status === 'pending' || p.status === 'running').map(p => '• ' + esc(p.text)).join('<br>') + '</div>' : ''}
+    <div style="opacity:.6;margin-top:8px">الأرقام تقديرية حسب أسعار Anthropic المعلنة.</div>`;
 }
 async function loadMCP() {
   const box = $('#mcplist'); if (!box) return;

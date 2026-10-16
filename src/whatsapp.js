@@ -110,7 +110,9 @@ async function handleOwner(num, { text, attachment, file, doc, voice, audio, med
   typing(num);
   const timer = setInterval(() => typing(num), 8000);
   try {
-    const out = await A().runManager(t, { attachments: attachment ? [attachment] : [], channel: 'whatsapp', progress: p => reply(p) });
+    const atts = attachment ? [attachment] : [];
+    // لو الذكاء الاصطناعي انقطع أو خلص الرصيد: الطلب ينحفظ ويتنفذ تلقائياً بعدين
+    const out = await require('./health').runOrQueue({ channel: 'whatsapp', text: t, attachments: atts }, () => A().runManager(t, { attachments: atts, channel: 'whatsapp', progress: p => reply(p) }));
     await reply(out);
   } catch (e) {
     console.error('wa manager', e);

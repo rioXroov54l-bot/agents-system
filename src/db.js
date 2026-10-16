@@ -67,6 +67,14 @@ CREATE TABLE IF NOT EXISTS appointments (
   customer_id int, location text, notes text, gcal_id text, reminded boolean DEFAULT false,
   created_at timestamptz DEFAULT now());
 
+CREATE TABLE IF NOT EXISTS ai_usage (
+  id serial PRIMARY KEY, at timestamptz DEFAULT now(), agent text, model text,
+  input int DEFAULT 0, output int DEFAULT 0, cache_read int DEFAULT 0, cache_write int DEFAULT 0, searches int DEFAULT 0, cost numeric(12,6) DEFAULT 0);
+CREATE INDEX IF NOT EXISTS ai_usage_at ON ai_usage(at);
+CREATE TABLE IF NOT EXISTS pending_requests (
+  id serial PRIMARY KEY, channel text, text text, attachments jsonb DEFAULT '[]', reason text, attempts int DEFAULT 0,
+  status text DEFAULT 'pending', created_at timestamptz DEFAULT now(), done_at timestamptz);
+
 CREATE TABLE IF NOT EXISTS files (
   id serial PRIMARY KEY, token text UNIQUE NOT NULL, name text NOT NULL, mime text, size int, data bytea,
   anthropic_id text, source text DEFAULT 'agent', created_at timestamptz DEFAULT now());

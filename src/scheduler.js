@@ -42,6 +42,9 @@ async function tick() {
     const dow = U.riyadh().getUTCDay(); // 0 = الأحد
     const { T } = require('./tools');
 
+    // مراقب الصحة كل 5 دقايق + تنفيذ الطلبات المحفوظة (بالخلفية عشان ما يأخر التذكيرات)
+    require('./health').watch().catch(e => console.error('health', e.message));
+
     // 0-ج) متابعة أسعار وتوفر المنتجات
     await require('./pricewatch').tick().catch(e => console.error('pricewatch', e.message));
 

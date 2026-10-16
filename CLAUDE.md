@@ -31,6 +31,7 @@
 - `tools.js` — الأدوات الأساسية (واتساب، Gmail، التقويم، تذكيرات، مهام...). الوحدات الثانية تسجل أدواتها في `T`.
 - `whatsapp.js` (Evolution webhook، المالك عبر senderPn/@lid)، `telegram.js`، `channels.js` (الإرسال + تنسيق الماركداون للجوال `mdLite`).
 - `scheduler.js` كل دقيقة: pricewatch ← extras ← pay ← رسائل مجدولة ← مواعيد ← فحوص يومية ← موجزات.
+- `health.js` الاعتمادية: حساب الاستهلاك والتكلفة لكل طلب (`ai_usage`)، ميزانية شهرية وتنبيهات، مراقب صحة كل 5 دقايق يبلغ المالك بالأعطال، طلبات ما تضيع (`pending_requests`: لو انقطع الذكاء الاصطناعي أو خلص الرصيد تنحفظ وتتنفذ بعدين)، وقوة العقل `ai_mode` (economy=Haiku / balanced=Sonnet / max=Opus). أدوات المدير: `system_status`, `usage_report`.
 - `power.js` ملفات Anthropic + تسليمها للمالك + خدمات MCP (GitHub/Zapier) من اللوحة. `web.js` المتصفح وأسئلة المالك أثناء التنفيذ.
 - باقي الوحدات: personal, pay, extras, reports (`/r/:token`)، life، pricewatch، voice، menu، quick (أوامر سريعة بدون ذكاء اصطناعي، منها «حالة النظام»)، watch، vault، google، world، approvals، docs.
 - `public/index.html` لوحة التحكم (صفحة وحدة). `db.js` ينشئ الجداول تلقائياً (`CREATE TABLE IF NOT EXISTS`).
@@ -39,6 +40,10 @@
 - لا يوجد سيرفر حقيقي هنا: اختبر بخوادم وهمية (mock) لـ Anthropic وEvolution وتيليجرام + Postgres محلي، و`node --check` لكل الملفات.
 - Playwright متوفر محلياً لاختبار المتصفح ولقطات اللوحة.
 - بعد الرفع: اطلب من المالك يرسل «حالة النظام» للسكرتير ويصوّر الرد.
+
+## دروس مهمة
+- «fetch failed» = انقطاع شبكة مع Anthropic؛ `callClaude` يعيد المحاولة 4 مرات. خطأ «credit balance» = الرصيد خلص (المالك يشحن من console.anthropic.com).
+- ردود المدير عن «حالة النظام» لازم تكون من الفحص الحقيقي (`quick.status` / `system_status`)، مو تخمين.
 
 ## معلّق / للمتابعة
 - التأكد إن خدمة الصوت (whisper) والمتصفح (browser) شغالين على السيرفر (عبر «حالة النظام»).

@@ -278,7 +278,8 @@ async function status() {
   const counts = await db.one(`SELECT (SELECT count(*) FROM reminders WHERE NOT done) AS rem, (SELECT count(*) FROM scheduled_messages WHERE status='pending') AS sched,
     (SELECT count(*) FROM price_watches WHERE active) AS watch, (SELECT count(*) FROM routines WHERE active) AS rout, (SELECT count(*) FROM medications WHERE active) AS meds`).catch(() => ({}));
   const L = ['🩺 **حالة النظام**', ''];
-  L.push(`${aiOk === true ? '✅' : '❌'} الذكاء الاصطناعي (Anthropic)${aiOk === true ? '' : ' — ' + (aiOk === 'HTTP 401' ? 'المفتاح غلط' : aiOk)}`);
+  const H = require('./health');
+  L.push(`${aiOk === true && !H.isCreditOut() ? '✅' : '❌'} الذكاء الاصطناعي (Anthropic)${aiOk !== true ? ' — ' + (aiOk === 'HTTP 401' ? 'المفتاح غلط' : aiOk) : H.isCreditOut() ? ' — الرصيد خالص، اشحن من console.anthropic.com' : ''} | 🧠 ${H.MODE_NAME[s.ai_mode] || H.MODE_NAME.balanced}`);
   L.push(`${ok(dbOk)} قاعدة البيانات`);
   L.push(`${wa && wa.connected ? '✅' : '❌'} واتساب السكرتير${wa && wa.state ? ' (' + wa.state + ')' : ''}`);
   L.push(`${ch.tgEnabled() ? (await ch.ownerTelegramId() ? '✅' : '⚠️') : '❌'} تيليجرام${tgInfo && tgInfo.last_error_message ? ' — آخر خطأ: ' + tgInfo.last_error_message.slice(0, 60) : ''}`);
@@ -289,9 +290,14 @@ async function status() {
   L.push('', `⚙️ آخر تحديث للسكرتير: ${build ? U.fmt(build) : '—'}`, `⏱️ شغال من: ${Math.round(process.uptime() / 3600 * 10) / 10} ساعة`,
     `🧠 الذاكرة: ${Math.round((mem - free) / 1e9 * 10) / 10}/${Math.round(mem / 1e9 * 10) / 10} GB | الضغط: ${load.toFixed(2)}${disk ? ' | 💾 ' + disk : ''}`,
     '', `📌 تذكيرات: ${counts.rem || 0} | رسائل مجدولة: ${counts.sched || 0} | متابعات أسعار: ${counts.watch || 0} | مهام متكررة: ${counts.rout || 0} | أدوية: ${counts.meds || 0}`);
+  const [tt, pend] = await Promise.all([H.totals().catch(() => null), db.one("SELECT count(*) AS n FROM pending_requests WHERE status IN ('pending','running')").catch(() => ({ n: 0 }))]);
+  if (tt) L.push(`💰 استهلاك الذكاء الاصطناعي: اليوم $${tt.today.toFixed(2)} | الشهر $${tt.month.toFixed(2)}${Number(s.monthly_budget) ? ` من $${s.monthly_budget}` : ''} (اكتب «الاستهلاك» للتفاصيل)`);
+  if (Number(pend.n)) L.push(`⏳ طلبات محفوظة تنتظر التنفيذ: ${pend.n}`);
   const fails = await db.many("SELECT text, at FROM activity WHERE type IN ('voice','notify','error') AND at > now() - interval '2 days' ORDER BY id DESC LIMIT 4").catch(() => []);
   if (fails.length) L.push('', '🧾 **آخر مشاكل:**', ...fails.map(f => `• ${U.fmt(f.at).slice(5)} ${f.text.slice(0, 100)}`));
   return L.join('\n');
 }
 
-module.exports = { status, watches, docs, meds, portfolio, assets, routines, payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };
+const usage = () => require('./health').usageReport();
+
+module.exports = { usage, status, watches, docs, meds, portfolio, assets, routines, payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };

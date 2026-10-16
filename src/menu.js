@@ -23,6 +23,7 @@ const QUICK = [
   { cmd: 'approvals', icon: '🟡', label: 'الموافقات', words: ['الموافقات', 'موافقات'], desc: 'الموافقات المعلقة' },
   { cmd: 'hijri', icon: '🗓️', label: 'التاريخ', words: ['التاريخ', 'الهجري', 'التاريخ الهجري', 'وش التاريخ'], desc: 'التاريخ هجري وميلادي' },
   { cmd: 'evening', icon: '🌙', label: 'ملخص اليوم', words: ['ملخص اليوم', 'المساء', 'ملخص'], desc: 'ملخص اليوم وبكرة' },
+  { cmd: 'usage', icon: '💰', label: 'الاستهلاك', words: ['الاستهلاك', 'استهلاكي', 'التكلفة', 'استهلاك السكرتير', 'كم صرف السكرتير', 'الرصيد'], desc: 'كم صرف السكرتير على الذكاء الاصطناعي' },
   { cmd: 'status', icon: '🩺', label: 'حالة النظام', words: ['حالة النظام', 'الحالة', 'حالتك', 'حالة السيرفر', 'حالة السكرتير', 'فحص النظام', 'status'], desc: 'فحص كل أجزاء النظام' },
   { cmd: 'menu', icon: '📋', label: 'القائمة', words: ['القائمة', 'قائمة', 'مساعدة', 'ابدأ', 'ابدا', 'start', 'الأوامر', 'الاوامر', 'وش تقدر تسوي', 'menu', 'help'], desc: 'كل اللي أقدر أسويه' }
 ];
@@ -121,7 +122,7 @@ function telegramMenu() {
   return { text, buttons };
 }
 // أزرار ثابتة تحت الكيبورد في تيليجرام
-const TG_KEYBOARD = [['today', 'calendar', 'tasks'], ['emails', 'money', 'bills'], ['meds', 'portfolio', 'docs'], ['weather', 'prayer', 'shop'], ['watches', 'payments', 'menu']]
+const TG_KEYBOARD = [['today', 'calendar', 'tasks'], ['emails', 'money', 'bills'], ['meds', 'portfolio', 'evening'], ['weather', 'prayer', 'shop'], ['watches', 'payments', 'status'], ['usage', 'docs', 'menu']]
   .map(row => row.map(c => { const q = QUICK.find(x => x.cmd === c); return { text: `${q.icon} ${q.label}` }; }));
 
 function whatsappMenu() {

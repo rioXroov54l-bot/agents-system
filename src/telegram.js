@@ -145,7 +145,7 @@ async function handleUpdate(u) {
   const typing = setInterval(() => ch.tg('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {}), 4500);
   ch.tg('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
   try {
-    const reply = await A().runManager(text, { attachments, channel: 'telegram', progress: (p) => ch.tgSend(chatId, p) });
+    const reply = await require('./health').runOrQueue({ channel: 'telegram', text, attachments }, () => A().runManager(text, { attachments, channel: 'telegram', progress: (p) => ch.tgSend(chatId, p) }));
     await ch.tgSend(chatId, reply);
   } catch (e) {
     console.error('manager', e);

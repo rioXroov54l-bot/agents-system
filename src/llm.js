@@ -1,7 +1,7 @@
 // محرك Claude: استدعاء مع أدوات + حلقة تنفيذ حتى ينتهي الوكيل
 const C = require('./config');
 
-async function callClaude({ system, messages, tools, model = C.MODEL, maxTokens = 4096, toolChoice, container, mcpServers, betas = [] }) {
+async function callClaude({ system, messages, tools, model = C.MODEL, maxTokens = 4096, toolChoice, container, mcpServers, betas = [], tag = 'quick' }) {
   const body = { model, max_tokens: maxTokens, messages };
   if (toolChoice) body.tool_choice = toolChoice;
   if (container) body.container = container;
@@ -34,13 +34,19 @@ async function callClaude({ system, messages, tools, model = C.MODEL, maxTokens 
       continue;
     }
     const data = await res.json().catch(() => ({}));
-    if (res.ok) return data;
+    if (res.ok) { // نسجل الاستهلاك، ولو كان الرصيد خالص فهذا يعني إنه انشحن
+      const H = require('./health');
+      H.recordUsage(tag, data.model || model, data.usage).catch(() => {});
+      if (H.isCreditOut()) H.noteSuccess().catch(() => {});
+      return data;
+    }
     lastErr = new Error('Claude ' + res.status + ': ' + JSON.stringify(data).slice(0, 400)); lastErr.status = res.status;
     if (![429, 500, 502, 503, 529].includes(res.status) || attempt === 3) break;
     await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
   }
   // نسجل المشاكل الحقيقية (انقطاع، رصيد، مفتاح، زحمة) — مو أخطاء 400 اللي نعالجها تلقائياً
   if (lastErr.network || lastErr.status !== 400 || /credit balance|billing/i.test(lastErr.message)) require('./db').log('error', '⚠️ ' + lastErr.message.slice(0, 300)).catch(() => {});
+  require('./health').noteError(lastErr).catch(() => {});
   throw lastErr;
 }
 
@@ -49,8 +55,8 @@ const CODE_EXEC_STABLE = 'code_execution_20250825';
 const textOf = content => (content || []).filter(b => b.type === 'text').map(b => b.text).join('\n').trim();
 
 // استدعاء بسيط بدون أدوات (نص فقط)
-async function ask(system, userText, { model = C.MODEL, maxTokens = 1500 } = {}) {
-  const data = await callClaude({ system, messages: [{ role: 'user', content: userText }], model, maxTokens });
+async function ask(system, userText, { model = C.MODEL, maxTokens = 1500, tag = 'quick' } = {}) {
+  const data = await callClaude({ system, messages: [{ role: 'user', content: userText }], model, maxTokens, tag });
   return textOf(data.content);
 }
 function parseJson(text) {
@@ -84,7 +90,7 @@ async function runAgent({ system, input, history = [], tools = [], model = C.MOD
   let mcp = mcpServers && mcpServers.length ? mcpServers : null, betas = [];
   const call = async (extra = {}) => {
     const container = skills && skills.length ? { ...(containerId ? { id: containerId } : {}), skills: skills.map(id => ({ type: 'anthropic', skill_id: id, version: 'latest' })) } : (containerId || undefined);
-    try { return await callClaude({ system, messages, tools: apiTools, model, maxTokens: AGENT_MAX_TOKENS, container, mcpServers: mcp, betas, ...extra }); }
+    try { return await callClaude({ system, messages, tools: apiTools, model, maxTokens: AGENT_MAX_TOKENS, container, mcpServers: mcp, betas, tag: ctx.agent || 'other', ...extra }); }
     catch (e) { // خدمة MCP خارجية معطلة: نكمل بدونها بدل ما يفشل الطلب كله
       if (mcp && /mcp/i.test(e.message)) { console.error('mcp off:', e.message.slice(0, 200)); mcp = null; steps.push({ tool: 'mcp', ok: false, result: 'تعذر الاتصال بخدمة خارجية' }); return call(extra); }
       // نسخة أداة تشغيل الكود غير مدعومة: نرجع للنسخة المستقرة
