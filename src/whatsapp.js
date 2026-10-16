@@ -57,9 +57,12 @@ async function handleOwner(num, { text, attachment, file, doc, voice, audio }) {
     try { text = await require('./voice').transcribe(audio.data, audio.mime); }
     catch (e) { db.log('voice', '🎙️ فشل فهم الصوت: ' + e.message.slice(0, 120)).catch(() => {}); return reply('🎙️ ما قدرت أفهم الرسالة الصوتية (' + e.message.slice(0, 80) + '). اكتبها لي أو جرب مرة ثانية.'); }
     finally { clearInterval(keep); clearTimeout(slow); }
+    if (require('./web').answer(text)) return reply(`🎙️ «${text}» — 👍 وصلني، أكمل…`);
     await reply(`🎙️ سمعتك: «${text}»`);
   }
   const t = text;
+  // جواب لسؤال مفتوح من وكيل المواقع (رمز تحقق، اختيار موعد...) — قبل أي شي ثاني
+  if (t && !file && require('./web').answer(t)) return reply('👍 وصلني، أكمل…');
   const qcmd = M.matchQuick(t);
   if (qcmd === 'menu') { lastMenu = Date.now(); return reply(M.whatsappMenu()); }
   if (qcmd) { typing(num); try { return reply(await quick[qcmd]()); } catch (e) { return reply('⚠️ ' + e.message.slice(0, 200)); } }

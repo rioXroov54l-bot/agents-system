@@ -78,6 +78,8 @@ async function handleUpdate(u) {
     return ch.tgSend(chatId, 'وصلت رسالتك للإدارة ✅ (اكتب «مهامي» لعرض مهامك)');
   }
 
+  // المالك: جواب لسؤال مفتوح من وكيل المواقع (رمز تحقق، اختيار موعد...)
+  if (text && require('./web').answer(text)) return ch.tgSend(chatId, '👍 وصلني، أكمل…');
   // المالك: أوامر سريعة
   const qcmd = M.matchQuick(text);
   if (qcmd === 'menu') return sendMenu(chatId);
@@ -103,6 +105,7 @@ async function handleUpdate(u) {
       text = await require('./voice').transcribe(f.data, media.mime_type || (m.video_note ? 'video/mp4' : 'audio/ogg'));
     } catch (e) { db.log('voice', '🎙️ فشل فهم الصوت: ' + e.message.slice(0, 120)).catch(() => {}); return ch.tgSend(chatId, '🎙️ ما قدرت أفهم الرسالة الصوتية (' + e.message.slice(0, 80) + '). اكتبها لي أو جرب مرة ثانية.'); }
     finally { clearInterval(keep); }
+    if (require('./web').answer(text)) return ch.tgSend(chatId, `🎙️ «${text}» — 👍 وصلني، أكمل…`);
     await ch.tgSend(chatId, `🎙️ سمعتك: «${text}»`);
     const q2 = M.matchQuick(text);
     if (q2 === 'menu') return sendMenu(chatId);

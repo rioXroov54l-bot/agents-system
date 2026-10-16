@@ -19,10 +19,30 @@ async function tg(method, payload) {
   return data.result;
 }
 
-// تيليجرام يقبل HTML محدود؛ نهرب النص ونحول **عريض** فقط
-const tgHtml = s => String(s ?? '')
+// ماركداون الوكلاء ← نص مرتب يناسب الجوال: العناوين عريضة، النقاط •، الجداول أسطر، بدون فراغات زايدة
+function mdLite(s) {
+  const out = [];
+  let bullet = false; // نقطة لحالها والنص في سطر بعدها
+  for (let line of String(s ?? '').replace(/\r/g, '').split('\n')) {
+    if (bullet) { if (!line.trim()) continue; bullet = false; if (!/^\s*([-*+]|#)/.test(line)) { out.push('• ' + line.trim()); continue; } }
+    if (/^\s*\|?\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)*\|?\s*$/.test(line)) continue; // فاصل جدول
+    const h = line.match(/^\s*#{1,6}\s+(.+?)\s*#*\s*$/);
+    if (h) { line = '**' + h[1].replace(/\*\*/g, '') + '**'; if (out.length && out[out.length - 1] !== '') out.push(''); }
+    else if (/^\s*\|.*\|\s*$/.test(line)) line = '▫️ ' + line.trim().replace(/^\||\|$/g, '').split('|').map(c => c.trim()).filter(Boolean).join(' — ');
+    else if (/^\s*[-*+]\s+\S/.test(line)) line = line.replace(/^(\s*)[-*+]\s+/, (m, sp) => (sp.length >= 2 ? '   ◦ ' : '• '));
+    else if (/^\s*[-*+•]\s*$/.test(line)) { bullet = true; continue; } // نقطة فاضية
+    else if (/^\s*(---+|\*\*\*+|___+)\s*$/.test(line)) line = '';
+    out.push(line.replace(/\s+$/, ''));
+  }
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
+// تيليجرام يقبل HTML محدود؛ نهرب النص ونحول **عريض** والروابط
+const tgHtml = s => mdLite(s)
   .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-  .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  .replace(/\[([^\]\n]{1,80})\]\((https?:\/\/[^\s)]+)\)/g, (m, t, u) => `<a href="${u.replace(/"/g, '&quot;')}">${t}</a>`)
+  .replace(/\*\*(.+?)\*\*/g, '<b>$1</b>')
+  .replace(/`([^`\n]+)`/g, '<code>$1</code>');
 
 async function tgSend(chatId, text, { buttons, keyboard, html = true } = {}) {
   const chunks = [];
@@ -84,7 +104,10 @@ async function evo(method, path, body) {
 }
 const waNumber = n => String(n).replace(/@.*/, '').replace(/\D/g, '');
 // واتساب يتعامل مع **عريض** بنجمة وحدة
-const waFormat = s => String(s || '').replace(/\*\*(.+?)\*\*/g, '*$1*');
+const waFormat = s => mdLite(s)
+  .replace(/\[([^\]\n]{1,80})\]\((https?:\/\/[^\s)]+)\)/g, '$1: $2')
+  .replace(/\*\*(.+?)\*\*/g, '*$1*')
+  .replace(/__(.+?)__/g, '_$1_');
 
 async function evoSendText(to, text) {
   const chunks = [];
@@ -233,4 +256,4 @@ async function notifyMember(member, text, opts = {}) {
   return false;
 }
 
-module.exports = { evo, evoEnabled, evoSecret, evoStatus, evoQR, evoPair, saNumber, evoLogout, setupEvolution, waNumber, TG_BASE, tg, tgSend, tgSecret, tgEnabled, ownerTelegramId, setupTelegramWebhook, sendWhatsApp, n8n, n8nReady, sendEmail, notifyOwner, notifyMember };
+module.exports = { mdLite, waFormat, tgHtml, evo, evoEnabled, evoSecret, evoStatus, evoQR, evoPair, saNumber, evoLogout, setupEvolution, waNumber, TG_BASE, tg, tgSend, tgSecret, tgEnabled, ownerTelegramId, setupTelegramWebhook, sendWhatsApp, n8n, n8nReady, sendEmail, notifyOwner, notifyMember };

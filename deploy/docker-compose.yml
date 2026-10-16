@@ -79,9 +79,11 @@ services:
       N8N_WEBHOOK_URL: http://n8n:5678/webhook/agents
       EVOLUTION_URL: http://evolution:8080
       WHISPER_URL: http://whisper:9000
+      BROWSER_WS: ws://browser:3000/
       DATA_DIR: /data
       TZ: Asia/Riyadh
     volumes: [agents_data:/data]
+    networks: [default, browsernet]
     depends_on:
       postgres: { condition: service_healthy }
 
@@ -149,6 +151,21 @@ services:
       redis: { condition: service_healthy }
 
   # تحويل الرسائل الصوتية لنص (Whisper على نفس السيرفر — بدون أي اشتراك)
+  # متصفح حقيقي لوكيل التنفيذ على المواقع (حجز مواعيد، تعبئة نماذج) — داخلي فقط بدون منافذ مفتوحة
+  browser:
+    image: mcr.microsoft.com/playwright:v1.56.1-noble
+    restart: unless-stopped
+    init: true
+    user: pwuser
+    working_dir: /home/pwuser
+    command: ["/bin/sh", "-c", "npx -y playwright@1.56.1 run-server --port 3000 --host 0.0.0.0"]
+    shm_size: "1gb"
+    mem_limit: 2g
+    environment:
+      TZ: Asia/Riyadh
+    # شبكة معزولة: المتصفح يطلع للإنترنت بس، وما يوصل لقاعدة البيانات ولا واتساب ولا n8n
+    networks: [browsernet]
+
   whisper:
     image: ${WHISPER_IMAGE:-onerahmet/openai-whisper-asr-webservice:latest}
     restart: unless-stopped
@@ -175,3 +192,6 @@ volumes:
   evolution_instances:
   kuma_data:
   whisper_models:
+
+networks:
+  browsernet: {}

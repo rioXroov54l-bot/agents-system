@@ -259,13 +259,14 @@ const watches = () => require('./pricewatch').quick();
 async function status() {
   const os = require('os'), fs = require('fs'), ch = require('./channels');
   const t = (p, ms = 4000) => Promise.race([p, new Promise(r => setTimeout(() => r('timeout'), ms))]).catch(e => 'ERR ' + e.message);
-  const [dbOk, wa, g, vLocal, n8nOk, tgInfo] = await Promise.all([
+  const [dbOk, wa, g, vLocal, n8nOk, tgInfo, brOk] = await Promise.all([
     t(db.one('SELECT 1 AS ok').then(() => true)),
     t(ch.evoStatus()),
     t(require('./google').status()),
     t(require('./voice').localReady()),
     t(fetch((process.env.N8N_WEBHOOK_URL || '').replace(/\/webhook\/.*$/, '') + '/healthz', { signal: AbortSignal.timeout(3000) }).then(r => r.ok).catch(() => false)),
-    t(ch.tgEnabled() ? ch.tg('getWebhookInfo', {}) : Promise.resolve(null))
+    t(ch.tgEnabled() ? ch.tg('getWebhookInfo', {}) : Promise.resolve(null)),
+    t(require('./web').ready(), 9000)
   ]);
   const s = await db.getSettings();
   const ok = v => v === true ? '✅' : '❌';
@@ -280,6 +281,7 @@ async function status() {
   L.push(`${ch.tgEnabled() ? (await ch.ownerTelegramId() ? '✅' : '⚠️') : '❌'} تيليجرام${tgInfo && tgInfo.last_error_message ? ' — آخر خطأ: ' + tgInfo.last_error_message.slice(0, 60) : ''}`);
   L.push(`${g && g.gmail ? '✅' : '❌'} Gmail | ${g && g.calendar ? '✅' : '❌'} تقويم Google`);
   L.push(`${vLocal === true ? '✅' : (process.env.GROQ_API_KEY || s.groq_key) ? '✅' : process.env.WHISPER_URL ? '⏳' : '❌'} الرسائل الصوتية${vLocal === true ? ' (على السيرفر)' : (process.env.GROQ_API_KEY || s.groq_key) ? ' (Groq)' : process.env.WHISPER_URL ? ' (المحرك لسا يتجهز)' : ''}`);
+  L.push(`${brOk === true ? '✅' : process.env.BROWSER_WS ? '⏳' : '❌'} المتصفح (الحجز وتعبئة النماذج في المواقع)${brOk === true ? '' : process.env.BROWSER_WS ? ' — يتجهز' : ''}`);
   L.push(`${ok(n8nOk)} n8n`);
   L.push('', `⚙️ آخر تحديث للسكرتير: ${build ? U.fmt(build) : '—'}`, `⏱️ شغال من: ${Math.round(process.uptime() / 3600 * 10) / 10} ساعة`,
     `🧠 الذاكرة: ${Math.round((mem - free) / 1e9 * 10) / 10}/${Math.round(mem / 1e9 * 10) / 10} GB | الضغط: ${load.toFixed(2)}${disk ? ' | 💾 ' + disk : ''}`,

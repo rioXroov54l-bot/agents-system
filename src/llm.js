@@ -128,10 +128,12 @@ async function runAgent({ system, input, history = [], tools = [], model = C.MOD
       } catch (e) {
         isError = true; out = 'خطأ: ' + e.message;
       }
-      const str = typeof out === 'string' ? out : JSON.stringify(out, null, 0);
-      steps.push({ tool: b.name, input: b.input, ok: !isError, result: str.slice(0, 300) });
-      if (onStep) { try { await onStep(b.name, b.input, isError); } catch (_) {} }
-      results.push({ type: 'tool_result', tool_use_id: b.id, content: str.slice(0, 20000), is_error: isError });
+      const blocks = out && out.__blocks; // نتيجة فيها صور (لقطة شاشة)
+      const str = blocks ? String(out.__text || '') : typeof out === 'string' ? out : JSON.stringify(out, null, 0);
+      const shown = tool && tool.redact ? tool.redact(b.input || {}) : b.input; // ما نحفظ الأرقام الحساسة في السجل
+      steps.push({ tool: b.name, input: shown, ok: !isError, result: str.slice(0, 300) });
+      if (onStep) { try { await onStep(b.name, shown, isError); } catch (_) {} }
+      results.push({ type: 'tool_result', tool_use_id: b.id, content: blocks || str.slice(0, 20000), is_error: isError });
     }
     messages.push({ role: 'user', content: results });
   }
