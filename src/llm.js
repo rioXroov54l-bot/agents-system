@@ -39,7 +39,8 @@ async function callClaude({ system, messages, tools, model = C.MODEL, maxTokens 
     if (![429, 500, 502, 503, 529].includes(res.status) || attempt === 3) break;
     await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
   }
-  require('./db').log('error', '⚠️ ' + lastErr.message.slice(0, 300)).catch(() => {});
+  // نسجل المشاكل الحقيقية (انقطاع، رصيد، مفتاح، زحمة) — مو أخطاء 400 اللي نعالجها تلقائياً
+  if (lastErr.network || lastErr.status !== 400 || /credit balance|billing/i.test(lastErr.message)) require('./db').log('error', '⚠️ ' + lastErr.message.slice(0, 300)).catch(() => {});
   throw lastErr;
 }
 

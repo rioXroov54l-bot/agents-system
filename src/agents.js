@@ -210,6 +210,7 @@ async function runSpecialist(key, task, { input, onStep, byOwner = false, channe
     return text;
   } catch (e) {
     await finishRun(run, { text: e.message }, 'error');
+    await db.log('error', `${a.icon} ${a.name}: ${String(e.message).slice(0, 250)}`, key);
     throw e;
   }
 }

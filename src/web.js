@@ -46,7 +46,13 @@ async function sendOwner(channel, text) {
 async function session(ctx) {
   if (ctx.web) return ctx.web;
   if (!enabled()) throw new Error('المتصفح غير مفعّل على السيرفر (خدمة browser)');
-  const browser = await PW().chromium.connect(WS(), { timeout: 30000 });
+  let browser;
+  try { browser = await PW().chromium.connect(WS(), { timeout: 30000 }); }
+  catch (e) {
+    const why = browserError(e);
+    await db.log('error', '🌐 المتصفح: ' + why).catch(() => {});
+    throw new Error('خدمة المتصفح على السيرفر ما ردت — ' + why);
+  }
   const context = await browser.newContext({ locale: 'ar-SA', timezoneId: 'Asia/Riyadh', viewport: { width: 1280, height: 900 }, userAgent: UA, acceptDownloads: false, ignoreHTTPSErrors: false });
   await context.route('**/*', r => isInternal(r.request().url()) ? r.abort('blockedbyclient') : r.continue());
   const s = { browser, context, page: await context.newPage(), dialogs: [], refs: new Map(), host: '' };
@@ -261,10 +267,19 @@ T.web_ask_owner = { name: 'web_ask_owner', description: 'يسأل المالك �
     return `رد المالك: ${r.text}`;
   } };
 
-// هل خدمة المتصفح جاهزة؟
+// سبب مفهوم لفشل الاتصال بالمتصفح
+function browserError(e) {
+  const m = String((e && e.message) || e).split('\n')[0];
+  if (/ENOTFOUND|EAI_AGAIN/.test(m)) return 'خدمة المتصفح مو موجودة/مو شغالة على السيرفر (browser)';
+  if (/ECONNREFUSED/.test(m)) return 'خدمة المتصفح لسا تشتغل (أول مرة تاخذ دقايق)';
+  if (/Timeout/i.test(m)) return 'خدمة المتصفح ما ردت في الوقت';
+  if (/428|version|Playwright version mismatch/i.test(m)) return 'نسخة المتصفح ما تطابق (' + m.slice(0, 80) + ')';
+  return m.slice(0, 140);
+}
+// هل خدمة المتصفح جاهزة؟ يرجع true أو سبب المشكلة
 async function ready() {
   if (!enabled()) return false;
-  try { const b = await PW().chromium.connect(WS(), { timeout: 8000 }); await b.close().catch(() => {}); return true; } catch (_) { return false; }
+  try { const b = await PW().chromium.connect(WS(), { timeout: 8000 }); await b.close().catch(() => {}); return true; } catch (e) { return browserError(e); }
 }
 
 module.exports = { enabled, ready, answer, pendingAsk, isInternal, snapshot, session };
