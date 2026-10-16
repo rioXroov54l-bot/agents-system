@@ -286,7 +286,7 @@ async function status() {
   L.push('', `⚙️ آخر تحديث للسكرتير: ${build ? U.fmt(build) : '—'}`, `⏱️ شغال من: ${Math.round(process.uptime() / 3600 * 10) / 10} ساعة`,
     `🧠 الذاكرة: ${Math.round((mem - free) / 1e9 * 10) / 10}/${Math.round(mem / 1e9 * 10) / 10} GB | الضغط: ${load.toFixed(2)}${disk ? ' | 💾 ' + disk : ''}`,
     '', `📌 تذكيرات: ${counts.rem || 0} | رسائل مجدولة: ${counts.sched || 0} | متابعات أسعار: ${counts.watch || 0} | مهام متكررة: ${counts.rout || 0} | أدوية: ${counts.meds || 0}`);
-  const fails = await db.many("SELECT text, at FROM activity WHERE type IN ('voice','notify') ORDER BY id DESC LIMIT 3").catch(() => []);
+  const fails = await db.many("SELECT text, at FROM activity WHERE type IN ('voice','notify','error') AND at > now() - interval '2 days' ORDER BY id DESC LIMIT 4").catch(() => []);
   if (fails.length) L.push('', '🧾 **آخر مشاكل:**', ...fails.map(f => `• ${U.fmt(f.at).slice(5)} ${f.text.slice(0, 100)}`));
   return L.join('\n');
 }

@@ -18,19 +18,28 @@ async function callClaude({ system, messages, tools, model = C.MODEL, maxTokens 
   }
   if (betas.length) headers['anthropic-beta'] = [...new Set(betas)].join(',');
   let lastErr;
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const res = await fetch((process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', {
-      method: 'POST',
-      headers,
-      body: JSON.stringify(body),
-      signal: AbortSignal.timeout(300000)
-    });
+  const payload = JSON.stringify(body);
+  for (let attempt = 0; attempt < 4; attempt++) {
+    let res;
+    try {
+      res = await fetch((process.env.ANTHROPIC_BASE_URL || 'https://api.anthropic.com') + '/v1/messages', {
+        method: 'POST', headers, body: payload, signal: AbortSignal.timeout(300000)
+      });
+    } catch (e) { // انقطاع شبكة (اتصال قديم انقفل، DNS...): نعيد المحاولة باتصال جديد
+      const code = (e.cause && (e.cause.code || e.cause.name || e.cause.message)) || e.name || e.message;
+      lastErr = new Error(`انقطع الاتصال بـ Claude (${String(code).slice(0, 60)})`); lastErr.network = true;
+      console.error('claude fetch', attempt, code);
+      if (e.name === 'TimeoutError' || attempt === 3) break;
+      await new Promise(r => setTimeout(r, 1500 * (attempt + 1)));
+      continue;
+    }
     const data = await res.json().catch(() => ({}));
     if (res.ok) return data;
-    lastErr = new Error('Claude ' + res.status + ': ' + JSON.stringify(data).slice(0, 400));
-    if (![429, 500, 502, 503, 529].includes(res.status)) break;
+    lastErr = new Error('Claude ' + res.status + ': ' + JSON.stringify(data).slice(0, 400)); lastErr.status = res.status;
+    if (![429, 500, 502, 503, 529].includes(res.status) || attempt === 3) break;
     await new Promise(r => setTimeout(r, 2000 * (attempt + 1)));
   }
+  require('./db').log('error', '⚠️ ' + lastErr.message.slice(0, 300)).catch(() => {});
   throw lastErr;
 }
 
@@ -151,4 +160,15 @@ function fallbackText(steps) {
   return done.length ? '✅ تم:\n' + done.join('\n') : 'تمام 👍 وش تبيني أسوي بالضبط؟';
 }
 
-module.exports = { callClaude, ask, runAgent, parseJson, textOf, filesOf };
+// خطأ مفهوم للمالك بدل رسائل تقنية
+function friendlyError(e) {
+  const m = String((e && e.message) || e || '');
+  if (e && e.network || /fetch failed|ECONNRESET|ETIMEDOUT|EAI_AGAIN|socket/i.test(m)) return '⚠️ انقطع الاتصال لحظة وأعدت المحاولة أكثر من مرة وما زبط. أرسل طلبك مرة ثانية بعد دقيقة.';
+  if (/credit balance|billing/i.test(m)) return '⚠️ رصيد Anthropic (الذكاء الاصطناعي) خلص. اشحن الرصيد من console.anthropic.com ← Billing وبعدها أرجع أشتغل على طول.';
+  if (/Claude 401|authentication|invalid x-api-key/i.test(m)) return '⚠️ مفتاح Anthropic (ANTHROPIC_API_KEY) غير صالح. لازم يتحدث في إعدادات السيرفر.';
+  if (/Claude (429|529)|overloaded|rate_limit/i.test(m)) return '⚠️ الذكاء الاصطناعي مزحوم الحين. جرب بعد دقيقة.';
+  if (/TimeoutError|aborted due to timeout/i.test(m)) return '⚠️ الطلب طوّل أكثر من اللازم ووقف. جرب تقسمه لطلبات أصغر.';
+  return '⚠️ صار خطأ: ' + m.slice(0, 250);
+}
+
+module.exports = { callClaude, ask, runAgent, parseJson, textOf, filesOf, friendlyError };

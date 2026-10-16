@@ -149,7 +149,7 @@ async function handleUpdate(u) {
     await ch.tgSend(chatId, reply);
   } catch (e) {
     console.error('manager', e);
-    await ch.tgSend(chatId, '⚠️ صار خطأ: ' + e.message.slice(0, 300));
+    await ch.tgSend(chatId, require('./llm').friendlyError(e));
   } finally { clearInterval(typing); }
 }
 

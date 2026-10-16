@@ -114,7 +114,7 @@ async function handleOwner(num, { text, attachment, file, doc, voice, audio, med
     await reply(out);
   } catch (e) {
     console.error('wa manager', e);
-    await reply('⚠️ صار خطأ: ' + e.message.slice(0, 300));
+    await reply(require('./llm').friendlyError(e));
   } finally { clearInterval(timer); }
 }
 
