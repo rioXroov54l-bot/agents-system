@@ -379,6 +379,11 @@ async function settings(v) {
     <select id="n_ch" onchange="api('/api/settings',{notify_channel:this.value}).then(()=>toast('✅ انحفظ'))">
       ${[['auto','تلقائي (تيليجرام إذا مربوط، وإلا واتساب)'],['telegram','تيليجرام'],['whatsapp','واتساب'],['both','الاثنين']].map(([k,l]) => `<option value="${k}" ${(s.notify_channel||'auto')===k?'selected':''}>${l}</option>`).join('')}
     </select></div>
+  <div class="card" id="phonecard"><h2>📱 التحكم بجوالك (الآيفون عبر الماك)</h2>
+    <div class="small" style="line-height:1.9">السكرتير يقدر يشوف شاشة آيفونك ويفتح التطبيقات ويضغط ويكتب — عن طريق ماكك (iPhone Mirroring). يحتاج: ماك بنظام macOS 15 أو أحدث، يكون شغال وقريب من الجوال، والجوال مقفول.<br>
+    🔒 ما يفتح البنوك ولا المحافظ ولا كلمات السر، وما يدفع، ويسألك قبل أي إرسال أو تأكيد.</div>
+    <div id="phonebox" class="small" style="margin-top:8px">⏳</div>
+  </div>
   <div class="card" id="mcpcard"><h2>🔌 الخدمات المتصلة (قوة إضافية)</h2>
     <div class="small" style="line-height:1.9">اربط سكرتيرك بتطبيقاتك عشان ينفذ فيها مباشرة. أمثلة:<br>
     • <b>Zapier</b> (آلاف التطبيقات: Google Sheets، Trello، Slack، Notion، Excel...): افتح <a href="https://mcp.zapier.com" target="_blank" dir="ltr">mcp.zapier.com</a> ← New MCP Server ← اختر التطبيقات والأوامر ← انسخ رابط <b>Server URL</b> والصقه هنا (بدون رمز).<br>
@@ -399,7 +404,28 @@ async function settings(v) {
     <button class="sm" onclick="api('/api/admin/migrate-code',{}).then(r=>{$('#mcode').innerHTML='الكود: <code>'+r.code+'</code>'})">إنشاء كود نقل</button> <span id="mcode" class="small"></span></div>
   <div class="card small" style="line-height:1.9">🔒 <b>للأمان:</b> السكرتير ما يدفع ولا يحوّل ولا يحفظ كلمات سر أو أرقام بطاقات أو رموز OTP. الدفع دائماً منك عبر الروابط اللي يجهزها لك.</div>`;
   loadWA(); clearInterval(waTimer); waTimer = setInterval(loadWA, 20000);
-  loadMCP(); loadUsage();
+  loadMCP(); loadUsage(); loadPhone();
+}
+let phoneCmd = '';
+async function loadPhone() {
+  const box = $('#phonebox'); if (!box) return;
+  const p = await api('/api/phone').catch(e => ({ error: e.message }));
+  const steps = phoneCmd ? `<div style="margin-top:8px;padding:10px;border:1px solid rgba(127,127,127,.3);border-radius:10px">
+      <b>على الماك:</b><br>١) افتح تطبيق <b>Terminal</b> (من Launchpad اكتب Terminal).<br>
+      ٢) انسخ هالأمر والصقه فيه واضغط Enter:
+      <div style="display:flex;gap:6px;margin:6px 0;align-items:center"><code id="phcmd" dir="ltr" style="flex:1;word-break:break-all;font-size:11px">${esc(phoneCmd)}</code><button class="sm" onclick="navigator.clipboard.writeText($('#phcmd').textContent);toast('انسخ ✓')">نسخ</button></div>
+      ٣) بتنفتح إعدادات الخصوصية: فعّل <b>Terminal</b> في «Accessibility» وفي «Screen & System Audio Recording».<br>
+      ٤) افتح تطبيق <b>iPhone Mirroring</b> وكمّل ربط جوالك (مرة وحدة).<br>
+      ٥) سكّر Terminal وأعد تشغيل الماك (أو افتح نافذة الجسر)، وقفّل جوالك وخله قريب.<br>
+      ٦) أرسل للسكرتير «حالة النظام» وتأكد إن سطر «جوالك» ✅.<br>
+      <span style="opacity:.7">⚠️ الرمز يطلع مرة وحدة — لا تشاركه مع أحد.</span></div>` : '';
+  box.innerHTML = p.error ? esc(p.error) : (p.configured
+    ? `${p.connected ? '🟢 <b>متصل</b> — السكرتير يقدر يتحكم بجوالك الحين' : '🔴 <b>الجسر مو متصل</b>' + (p.last_seen ? ' (آخر اتصال ' + esc(String(p.last_seen).slice(0, 16).replace('T', ' ')) + ')' : ' — للحين ما اشتغل على الماك')}
+       <div style="margin-top:8px;display:flex;gap:6px;flex-wrap:wrap"><button class="sm" onclick="phoneToken()">رمز ربط جديد</button><button class="sm danger" onclick="if(confirm('تفصل جوالك عن السكرتير؟'))api('/api/phone/revoke',{}).then(()=>{phoneCmd='';loadPhone()})">فصل</button></div>`
+    : `غير مربوط. <div style="margin-top:8px"><button class="primary" onclick="phoneToken()">اربط جوالي</button></div>`) + steps;
+}
+async function phoneToken() {
+  try { const r = await api('/api/phone/token', {}); phoneCmd = r.command; loadPhone(); } catch (e) { toast('⚠️ ' + e.message); }
 }
 const AG = { manager: '🧠 المدير', builder: '🛠️ الملفات', web: '🌐 المواقع', research: '🔎 البحث', travel: '✈️ السفر', money: '💰 المالية', shopping: '🛒 التسوق', writer: '✍️ الكتابة', planner: '🎯 التخطيط', gov: '🏛️ الحكومية', health: '🩺 الصحة', secretary: '📋 السكرتير', quick: '⚡ سريعة', pricewatch: '🔔 الأسعار', other: 'أخرى' };
 const HN = { ai: 'الذكاء الاصطناعي', whatsapp: 'واتساب', browser: 'المتصفح', voice: 'الصوت', google: 'Google', disk: 'المساحة' };

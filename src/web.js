@@ -247,7 +247,7 @@ T.web_ask_owner = { name: 'web_ask_owner', description: 'يسأل المالك �
     const s = ctx.web;
     const host = s && s.host ? s.host : '';
     if (pendingAsk()) throw new Error('فيه سؤال ثاني مفتوح للمالك');
-    let msg = `🌐 **${host || 'الموقع'}** — أحتاج منك:\n${question}`;
+    let msg = `${ctx.agent === 'phone' ? '📱 **جوالك**' : '🌐 **' + (host || 'الموقع') + '**'} — أحتاج منك:\n${question}`;
     if (kind === 'otp' || (kind !== 'captcha' && /رمز التحقق|رمز التفعيل|كود|OTP|الرمز المرسل|رسالة نصية/i.test(question))) msg += `\n\n🔒 أرسل الرمز **فقط** إذا وصلك من ${host || 'نفس الجهة'} لهذا الطلب اللي طلبته. لو رسالة الرمز من بنك أو فيها مبلغ أو تحويل **لا ترسله**.`;
     if (kind === 'nafath') msg += '\n\n🔒 افتح تطبيق نفاذ وتأكد إن الطلب من نفس الجهة قبل ما توافق، وبعدها اكتب لي «تم».';
     msg += '\n\n(اكتب «إلغاء» لوقف العملية)';

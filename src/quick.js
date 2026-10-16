@@ -286,6 +286,8 @@ async function status() {
   L.push(`${g && g.gmail ? '✅' : '❌'} Gmail | ${g && g.calendar ? '✅' : '❌'} تقويم Google`);
   L.push(`${vLocal === true ? '✅' : (process.env.GROQ_API_KEY || s.groq_key) ? '✅' : process.env.WHISPER_URL ? '⏳' : '❌'} الرسائل الصوتية${vLocal === true ? ' (على السيرفر)' : (process.env.GROQ_API_KEY || s.groq_key) ? ' (Groq)' : process.env.WHISPER_URL ? ' (المحرك لسا يتجهز)' : ''}`);
   L.push(`${brOk === true ? '✅' : '❌'} المتصفح (الحجز وتعبئة النماذج في المواقع)${brOk === true ? '' : process.env.BROWSER_WS ? ' — ' + (typeof brOk === 'string' ? brOk : 'ما رد') : ' — غير مفعّل'}`);
+  const ph = await require('./phone').status().catch(() => ({}));
+  if (ph.configured) L.push(`${ph.connected ? '✅' : '❌'} جوالك (عبر الماك)${ph.connected ? '' : ' — الجسر مو متصل' + (ph.last_seen ? ' (آخر اتصال ' + U.fmt(ph.last_seen).slice(5) + ')' : '') + ': تأكد الماك شغال ونافذة الجسر مفتوحة'}`);
   L.push(`${ok(n8nOk)} n8n`);
   L.push('', `⚙️ آخر تحديث للسكرتير: ${build ? U.fmt(build) : '—'}`, `⏱️ شغال من: ${Math.round(process.uptime() / 3600 * 10) / 10} ساعة`,
     `🧠 الذاكرة: ${Math.round((mem - free) / 1e9 * 10) / 10}/${Math.round(mem / 1e9 * 10) / 10} GB | الضغط: ${load.toFixed(2)}${disk ? ' | 💾 ' + disk : ''}`,

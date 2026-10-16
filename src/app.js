@@ -138,6 +138,9 @@ app.post('/hook/:token', async (req, res) => {
   } catch (e) { res.status(500).type('text/plain; charset=utf-8').send('صار خطأ: ' + e.message.slice(0, 200)); }
 });
 
+// ---------- جسر جوال المالك (الماك ← السيرفر) — محمي برمز الجسر ----------
+require('./phone').mount(app);
+
 // ================= لوحة التحكم (بكلمة سر) =================
 function auth(req, res, next) {
   if (!C.DASHBOARD_PASSWORD) return res.status(500).send('حدد DASHBOARD_PASSWORD في الإعدادات');
@@ -323,6 +326,11 @@ app.post('/api/whatsapp/owner', wrap(async (req, res) => {
   res.json({ message: '✅ انحفظ رقمك', owner_phone: '…' + num.slice(-4) });
 }));
 // بوت تيليجرام من اللوحة (بدل تعديل ملفات السيرفر)
+// التحكم بجوال المالك
+app.get('/api/phone', wrap(async (_req, res) => res.json(await require('./phone').status())));
+app.post('/api/phone/token', wrap(async (_req, res) => { const r = await require('./phone').newToken(); await db.log('settings', '📱 رمز ربط جديد لجسر الجوال'); res.json(r); }));
+app.post('/api/phone/revoke', wrap(async (_req, res) => { await require('./phone').revoke(); await db.log('settings', '📱 فصل جسر الجوال'); res.json({ ok: true }); }));
+
 // خدمات خارجية (MCP)
 const maskUrl = u => { try { const x = new URL(u); return x.host + (x.pathname.length > 1 ? '/…' + x.pathname.slice(-4) : ''); } catch (_) { return '—'; } };
 app.get('/api/mcp', wrap(async (_req, res) => res.json(((await db.getSettings()).mcp_servers || []).map(m => ({ name: m.name, label: m.label, enabled: m.enabled !== false, url: maskUrl(m.url), token: m.token ? '••••' + String(m.token).slice(-4) : '' })))));
