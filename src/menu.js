@@ -23,7 +23,7 @@ const QUICK = [
   { cmd: 'approvals', icon: '🟡', label: 'الموافقات', words: ['الموافقات', 'موافقات'], desc: 'الموافقات المعلقة' },
   { cmd: 'hijri', icon: '🗓️', label: 'التاريخ', words: ['التاريخ', 'الهجري', 'التاريخ الهجري', 'وش التاريخ'], desc: 'التاريخ هجري وميلادي' },
   { cmd: 'evening', icon: '🌙', label: 'ملخص اليوم', words: ['ملخص اليوم', 'المساء', 'ملخص'], desc: 'ملخص اليوم وبكرة' },
-  { cmd: 'status', icon: '🩺', label: 'حالة النظام', words: ['حالة النظام', 'الحالة', 'حالتك', 'status'], desc: 'فحص كل أجزاء النظام' },
+  { cmd: 'status', icon: '🩺', label: 'حالة النظام', words: ['حالة النظام', 'الحالة', 'حالتك', 'حالة السيرفر', 'حالة السكرتير', 'فحص النظام', 'status'], desc: 'فحص كل أجزاء النظام' },
   { cmd: 'menu', icon: '📋', label: 'القائمة', words: ['القائمة', 'قائمة', 'مساعدة', 'ابدأ', 'ابدا', 'start', 'الأوامر', 'الاوامر', 'وش تقدر تسوي', 'menu', 'help'], desc: 'كل اللي أقدر أسويه' }
 ];
 
@@ -32,9 +32,15 @@ function matchQuick(text) {
   const t = String(text || '').trim().replace(/@\w+$/, '');
   const slash = t.match(/^\/(\w+)$/);
   if (slash) { const q = QUICK.find(x => x.cmd === slash[1].toLowerCase()) || (slash[1] === 'help' ? QUICK.find(x => x.cmd === 'menu') : null); return q ? q.cmd : null; }
-  const clean = t.replace(/^[^\p{L}\p{N}]+/u, '').trim(); // يشيل الإيموجي من البداية
-  const q = QUICK.find(x => x.words.includes(clean) || x.label === clean);
+  const clean = norm(t);
+  const q = QUICK.find(x => x.words.some(w => norm(w) === clean) || norm(x.label) === clean);
   return q ? q.cmd : null;
+}
+// توحيد الكتابة عشان الأخطاء الشائعة ما تفوّت الأمر: حاله/حالة، النضام/النظام، أ/ا، ى/ي، التشكيل، علامات الترقيم
+function norm(s) {
+  return String(s || '').replace(/^[^\p{L}\p{N}]+|[^\p{L}\p{N}]+$/gu, '').trim()
+    .replace(/[\u064B-\u0652\u0640]/g, '').replace(/[أإآٱ]/g, 'ا').replace(/ى/g, 'ي').replace(/ة/g, 'ه').replace(/ؤ/g, 'و').replace(/ئ/g, 'ي')
+    .replace(/ظ/g, 'ض').replace(/ذ/g, 'ز').replace(/\s+/g, ' ').toLowerCase();
 }
 
 // أقسام القدرات بالتفصيل
