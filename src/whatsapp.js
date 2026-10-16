@@ -15,30 +15,61 @@ const seen = new Set();
 
 const isOwner = num => C.OWNER_PHONE && num && num.slice(-9) === C.OWNER_PHONE.slice(-9);
 
-function extract(msg) {
-  const m = msg.message || {};
-  const text = m.conversation || (m.extendedTextMessage && m.extendedTextMessage.text) || (m.imageMessage && m.imageMessage.caption) ||
-    (m.documentMessage && m.documentMessage.caption) || (m.videoMessage && m.videoMessage.caption) || (m.documentWithCaptionMessage && m.documentWithCaptionMessage.message && m.documentWithCaptionMessage.message.documentMessage && m.documentWithCaptionMessage.message.documentMessage.caption) || '';
-  const b64 = m.base64 || msg.base64 || null;
-  let attachment = null, kind = msg.messageType || Object.keys(m)[0] || 'unknown';
-  if (m.imageMessage && b64) attachment = { type: 'image', source: { type: 'base64', media_type: /png/.test(m.imageMessage.mimetype || '') ? 'image/png' : 'image/jpeg', data: b64 } };
-  const doc = m.documentMessage || (m.documentWithCaptionMessage && m.documentWithCaptionMessage.message && m.documentWithCaptionMessage.message.documentMessage);
-  let file = null;
-  if (doc && b64 && /pdf/.test(doc.mimetype || '')) attachment = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } };
-  else if (doc && b64 && /^image\/(jpeg|png|webp|gif)$/.test(doc.mimetype || '')) attachment = { type: 'image', source: { type: 'base64', media_type: doc.mimetype, data: b64 } };
-  else if (doc && b64) file = { data: b64, name: doc.fileName || doc.title || 'file', mime: doc.mimetype || '' };
-  const au = m.audioMessage || m.pttMessage;
+// واتساب يغلّف بعض الرسائل (رسائل مؤقتة، عرض مرة وحدة، مستند مع تعليق، رسالة معدلة)
+function unwrap(m) {
+  for (let i = 0; i < 5 && m; i++) {
+    const w = m.ephemeralMessage || m.viewOnceMessage || m.viewOnceMessageV2 || m.viewOnceMessageV2Extension || m.documentWithCaptionMessage || m.editedMessage;
+    if (w && w.message) m = { ...w.message, base64: m.base64 }; else break;
+  }
+  return m || {};
+}
+const CLAUDE_IMG = /^image\/(jpeg|png|webp|gif)$/;
+
+function extract(msg, forcedB64) {
+  const m = unwrap(msg.message || {});
+  const img = m.imageMessage, doc = m.documentMessage, au = m.audioMessage || m.pttMessage, vid = m.videoMessage;
+  const text = m.conversation || (m.extendedTextMessage && m.extendedTextMessage.text) || (img && img.caption) || (doc && doc.caption) || (vid && vid.caption) || '';
+  const b64 = forcedB64 || m.base64 || msg.base64 || (msg.message && msg.message.base64) || null;
+  let attachment = null, file = null, kind = msg.messageType || Object.keys(m).find(k => k !== 'base64' && k !== 'messageContextInfo') || 'unknown';
+  if (img && b64) attachment = { type: 'image', source: { type: 'base64', media_type: CLAUDE_IMG.test(img.mimetype || '') ? img.mimetype.split(';')[0] : 'image/jpeg', data: b64 } };
+  if (doc && b64) {
+    const mt = (doc.mimetype || '').split(';')[0];
+    if (/pdf/.test(mt)) attachment = { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } };
+    else if (CLAUDE_IMG.test(mt)) attachment = { type: 'image', source: { type: 'base64', media_type: mt, data: b64 } };
+    else file = { data: b64, name: doc.fileName || doc.title || 'file', mime: mt };
+  }
   const voice = !!au;
   const audio = au && b64 ? { data: b64, mime: au.mimetype || 'audio/ogg' } : null;
-  return { text: String(text).trim(), attachment, file, doc: !!doc, voice, audio, kind };
+  // ميديا بدون محتوى في الـ webhook ← نجيبها من Evolution
+  const needsMedia = !b64 && !!(img || doc || au);
+  const mediaKind = img ? 'image' : doc ? 'document' : au ? 'audio' : vid ? 'video' : null;
+  return { text: String(text).trim(), attachment, file, doc: !!doc, voice, audio, kind, needsMedia, mediaKind };
+}
+
+// يجيب الصورة/الملف/الصوت من Evolution لما ما توصل مع الـ webhook
+async function fetchMedia(msg) {
+  const r = await ch.evo('POST', `/chat/getBase64FromMediaMessage/${C.EVOLUTION_INSTANCE}`, { message: { key: msg.key, message: msg.message }, convertToMp4: false });
+  const b = r && (r.base64 || (r.data && r.data.base64));
+  return b ? String(b).replace(/^data:[^,]+,/, '') : null;
+}
+async function parse(msg) {
+  let p = extract(msg);
+  if (p.needsMedia) {
+    const b = await fetchMedia(msg).catch(e => { console.error('wa media', e.message); return null; });
+    if (b) p = extract(msg, b); else p.mediaFailed = true;
+  }
+  if (p.attachment && p.attachment.type === 'image' && p.attachment.source.data.length > 6.6e6) { p.attachment = null; p.mediaTooBig = true; } // حد الصور 5MB
+  return p;
 }
 
 async function typing(num) {
   ch.evo('POST', `/chat/sendPresence/${C.EVOLUTION_INSTANCE}`, { number: num, presence: 'composing', delay: 3000 }).catch(() => {});
 }
 
-async function handleOwner(num, { text, attachment, file, doc, voice, audio }) {
+async function handleOwner(num, { text, attachment, file, doc, voice, audio, mediaFailed, mediaTooBig, mediaKind }) {
   const reply = t => ch.sendWhatsApp(num, t);
+  if (mediaTooBig) return reply('🖼️ الصورة كبيرة مرة (أكثر من 5MB). أرسلها كصورة عادية مو «HD» أو قصّها شوي.');
+  if (mediaFailed && mediaKind === 'image') return reply('🖼️ وصلتني رسالتك بس الصورة ما نزلت من واتساب. أرسلها مرة ثانية (ولو تكرر، أرسلها على تيليجرام).');
   if (doc && !attachment && !file) return reply('📎 ما وصلني الملف كامل، أرسله مرة ثانية.');
   if (file) {
     // Excel / Word / PowerPoint / CSV... ← حاوية التحليل
@@ -125,7 +156,7 @@ async function handleEvolution(body) {
     // واتساب الجديد قد يرسل المعرف بصيغة @lid، فنأخذ الرقم الحقيقي من الحقول البديلة
     const pn = [msg.key.senderPn, msg.key.remoteJidAlt, msg.key.participantPn, msg.senderPn].find(x => x && /@s\.whatsapp\.net$|^\d+$/.test(x));
     const num = ch.waNumber(pn || jid);
-    const parsed = extract(msg);
+    const parsed = await parse(msg);
     if (isOwner(num)) { handleOwner(num, parsed).catch(e => console.error('wa owner', e.message)); continue; }
     const watched = await W.get(num), st = await db.getSettings();
     // شخص تحت المراقبة، أو وضع «أبلغني برسائل الناس»: نوصّل رسالته للمالك ولا نرد عليه
