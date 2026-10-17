@@ -305,6 +305,8 @@ async function runManagerInner(text, { attachments = [], channel = 'dashboard', 
 المرفقات: صورة فاتورة/إيصال ← سجّلها مصروف. صورة رسالة بنك ← record_bank_message. صورة بطاقة/رقم ← جهة اتصال. صورة وثيقة (جواز/هوية/رخصة/استمارة) ← سجّل اسمها وتاريخ انتهائها بـ save_document، وإذا طلب المالك حفظ بياناتها احفظها كاملة في الخزنة بـ vault_save (رقمها، الاسم بالإنجليزي كما فيها، الجنسية، الميلاد، الإصدار والانتهاء). مستند/PDF ← لخصه ونفّذ المطلوب. صورة منتج ← ابحث عنه وقارن أسعاره.
 
 ${await companyContext()}`;
+  // تلميح ثابت: «رد عليه على أي شي يحتاجه» = يكمل المحادثة بنفسه (handle_contact) مو مراقبة ولا ملاحظة
+  if (text && require('./delegate').wantsDelegate(text)) text += '\n\n[تنبيه النظام: المالك يبي السكرتير يكمل المحادثة مع هالشخص بنفسه ويرد على كل رسائله ← استخدم handle_contact (لو ما فيه رقم، خذه من آخر رسالة وصلت من الشخص في المحادثة). لا تستخدم watch_whatsapp ولا تكتفي بحفظ ملاحظة.]';
   const content = attachments.length ? [...attachments, { type: 'text', text: text || 'تعامل مع المرفق' }] : text;
   const run = await startRun('manager', text);
   await db.log('owner', String(text || '[مرفق]').slice(0, 120), 'manager');

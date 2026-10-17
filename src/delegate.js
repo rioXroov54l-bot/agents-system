@@ -11,6 +11,21 @@ const { T, appendConversation } = require('./tools');
 
 const MAX_PER_HOUR = 20;
 
+// المالك يبي السكرتير يكمل المحادثة مع شخص بنفسه؟ («رد عليه على أي شي يحتاجه»، «ضبط معه»، «تابع معه»...)
+const INTENT = /(رد|ردّ|يرد|ترد|تكفل|ضبط|ظبط|تابع|تعامل|تفاهم|خلّ?ص|كمّ?ل)\S*\s+(عليه|معه|مع|على|علي)[\s\S]{0,80}(أي|اي|ايّ|كل|كامل|يحتاج|يحتاجه|يبي|يبغى|موعد|استفسار|طلب|سؤال|بنفسك|على طول)|(رد|ضبط|ظبط|تابع)\S*\s+(عليه|معه)\s*(كامل|على طول|بنفسك)|(تابع|كمل|كمّل|خلص|خلّص|تفاهم)\s+معه|تكفل\s+(بالرد|فيه|به|بالموضوع)|انت\s+(رد|ترد)\s+عليه/;
+const wantsDelegate = text => INTENT.test(String(text || '').replace(/[أإآ]/g, 'ا'));
+
+// شخص تحت المراقبة راسلنا: هل المالك طلب قبل إننا نرد عليه بأنفسنا؟ (مثلاً طلبه قبل ما تنزل الميزة)
+async function maybeEnable(num, w) {
+  if (!w || w.auto || w.auto_checked || w.finished_at) return w;
+  const tail = String(num).replace(/\D/g, '').slice(-9);
+  const rows = await db.many("SELECT text FROM owner_chat WHERE role='owner' AND at > now() - interval '3 days' ORDER BY id DESC LIMIT 40").catch(() => []);
+  const hit = rows.find(r => String(r.text).replace(/\D/g, '').includes(tail) && wantsDelegate(r.text));
+  if (!hit) { await W.update(num, { auto_checked: true }); return w; }
+  await W.update(num, { auto: true, auto_checked: true, goal: String(hit.text).slice(0, 400), can_book: /موعد|مواعيد|زيار|اجتماع|لقاء|(أي|اي|كل)\s*شي|كامل/.test(String(hit.text).replace(/[أإآ]/g, 'ا')), report: 'each', auto_since: new Date().toISOString() });
+  return W.get(num);
+}
+
 // ---------- تجميع رسائل الشخص (الناس يرسلون كذا رسالة قصيرة ورا بعض) ----------
 const buffers = new Map();
 function collect(num, piece, onFlush, ms = Number(process.env.DELEGATE_WAIT_MS || 7000)) {
@@ -102,7 +117,7 @@ const BOOK = { name: 'book_meeting', description: 'سجّل الموعد الل�
 
 // ---------- أدوات المدير ----------
 T.handle_contact = { name: 'handle_contact', description: 'خلّ السكرتير يكمل المحادثة مع شخص بنفسه (رد تلقائي مستمر على كل رسائله، مو رسالة وحدة) — لما يقول المالك «رد عليه على أي شي يحتاجه» أو «ضبط معه» أو «تابع معه» أو «خلّص معه الموضوع» أو «اتفق معه على موعد». يبلغ المالك بعد كل رد ويسأله عن اللي ما يعرفه.',
-  input_schema: S({ phone: str('رقمه 05xxxxxxxx'), name: str('اسمه'), goal: str('وش المطلوب يتم معه بالضبط (من كلام المالك)'), rules: str('تعليمات المالك وحدوده (أسعار مسموحة، معلومات يقدر يعطيها، أسلوب...)'), can_book: { type: 'boolean', description: 'مسموح يرتب معه موعد في تقويم المالك' }, days: { type: 'integer', description: 'كم يوم (افتراضي 7)' }, report: { type: 'string', enum: ['each', 'important'], description: 'each = يبلغ المالك بعد كل رد (افتراضي)، important = بس الأسئلة والخلاصة' }, first_message: str('رسالة يبدأ فيها الحين (اختياري، لو المالك يبي يبدأ هو المحادثة)') }, ['phone', 'goal']),
+  input_schema: S({ phone: str('رقمه 05xxxxxxxx'), name: str('اسمه'), goal: str('وش المطلوب يتم معه بالضبط (من كلام المالك)'), rules: str('تعليمات المالك وحدوده (أسعار مسموحة، معلومات يقدر يعطيها، أسلوب...)'), can_book: { type: 'boolean', description: 'مسموح يرتب معه موعد في تقويم المالك (true لو ذكر موعد، أو قال «أي شي يحتاجه/كامل»)' }, days: { type: 'integer', description: 'كم يوم (افتراضي 7)' }, report: { type: 'string', enum: ['each', 'important'], description: 'each = يبلغ المالك بعد كل رد (افتراضي)، important = بس الأسئلة والخلاصة' }, first_message: str('رسالة يبدأ فيها الحين (اختياري، لو المالك يبي يبدأ هو المحادثة)') }, ['phone', 'goal']),
   handler: async (a, ctx) => {
     if (!ctx.byOwner) throw new Error('بطلب المالك فقط');
     const num = ch.saNumber(a.phone);
@@ -124,4 +139,4 @@ T.contact_reply = { name: 'contact_reply', description: 'المالك جاوب �
     return r;
   } };
 
-module.exports = { incoming, respond, collect };
+module.exports = { incoming, respond, collect, wantsDelegate, maybeEnable };

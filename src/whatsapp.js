@@ -169,7 +169,8 @@ async function handleEvolution(body) {
     const num = ch.waNumber(pn || jid);
     const parsed = await parse(msg);
     if (isOwner(num)) { handleOwner(num, parsed).catch(e => console.error('wa owner', e.message)); continue; }
-    const watched = await W.get(num), st = await db.getSettings();
+    let watched = await W.get(num); const st = await db.getSettings();
+    if (watched && !watched.auto) watched = await require('./delegate').maybeEnable(num, watched).catch(() => watched);
     // شخص المالك موكلني أكمل معه المحادثة بنفسي
     if (watched && watched.auto) { require('./delegate').incoming(num, msg.pushName, parsed, watched).catch(e => console.error('delegate in', e.message)); continue; }
     // شخص تحت المراقبة، أو وضع «أبلغني برسائل الناس»: نوصّل رسالته للمالك ولا نرد عليه
@@ -179,7 +180,7 @@ async function handleEvolution(body) {
       const what = parsed.text || (heard ? `🎙️ (رسالة صوتية) «${heard}»` : parsed.attachment ? (parsed.attachment.type === 'image' ? '[صورة]' : '[مستند]') : parsed.file ? `[ملف: ${parsed.file.name}]` : parsed.voice ? '[رسالة صوتية]' : `[${parsed.kind}]`);
       const who = msg.pushName || (watched && watched.name) || num;
       const note = watched
-        ? `📩 **رد من ${who}** (${num})${watched.note ? '\n📝 ' + watched.note : ''}\n\n${what}`
+        ? `📩 **رد من ${who}** (${num})${watched.note ? '\n📝 ' + watched.note : ''}\n\n${what}\n\n💡 تبيني أرد عليه وأكمل معه بنفسي؟ قل: «رد عليه على أي شي يحتاجه»`
         : `📨 **رسالة لرقم السكرتير من ${who}** (${num})\n\n${what}\n\n(ما رديت عليه. قل لي «رد عليه ...» إذا تبي أرد)`;
       await appendConversation(num, msg.pushName, 'customer', what).catch(() => {});
       if (watched) await W.update(num, { last_in: new Date().toISOString() }).catch(() => {});
