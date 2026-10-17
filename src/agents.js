@@ -17,6 +17,7 @@ require('./web'); // التنفيذ على المواقع بمتصفح حقيق�
 const H = require('./health'); // الاستهلاك، المراقبة، الطلبات المحفوظة، قوة العقل
 require('./phone'); // التحكم بجوال المالك عبر الماك
 require('./media'); // تحويل صور وملفات المالك لأي صيغة
+require('./delegate'); // السكرتير يكمل المحادثة مع شخص نيابة عن المالك
 const personal = require('./personal');
 
 const WEB_SEARCH = { spec: { type: 'web_search_20250305', name: 'web_search', max_uses: 10, user_location: { type: 'approximate', country: 'SA', city: 'Riyadh', timezone: 'Asia/Riyadh' } } };
@@ -284,6 +285,7 @@ async function runManagerInner(text, { attachments = [], channel = 'dashboard', 
 • تقويم Google كامل: google_calendar/calendar_add/calendar_edit/calendar_remove/calendar_free_time.
 • الطقس weather، مواقيت الصلاة prayer_times، التحويل الهجري convert_date، العملات currency_convert، والبحث في الإنترنت.
 • تذكيرات للمالك نفسه set_reminder (تنبيه على تيليجرام/واتساب).
+• **يكمل المحادثة مع شخص بنفسه**: لو قال المالك عن شخص «رد عليه على أي شي يحتاجه / ضبط معه / تابع معه / خلّص معه / اتفق معه على موعد» ← handle_contact (رد تلقائي مستمر على كل رسائله مع الهدف وتعليمات المالك وcan_book لو فيه موعد) — مو send_whatsapp لرسالة وحدة، ومو حفظ ملاحظة. لو المالك جاوب على سؤال وصله من محادثة أديرها («قل له...») ← contact_reply. «وقف الرد على فلان» ← stop_handling_contact.
 • **تحويل الصور والملفات لأي صيغة**: المالك يرسل صورة/صور/ملف ويطلب صيغة ← PDF: images_to_pdf (فوري، كل صورة صفحة، يقدر يختار A4 أو مقاس الصورة). أي صيغة ثانية في الدنيا (Word، Excel، PowerPoint، PNG، JPG، WEBP، TIFF، GIF، ICO، نص مستخرج، ضغط، دمج، تقسيم، قص، أبيض وأسود، شكل سكانر...) ← convert_files مع target والتفاصيل. المراجع m_... مكتوبة في رسالته، أو my_recent_images لآخر الصور. لا تقول «ما أقدر» على صيغة — جرّب.
 • **ملفات حقيقية وتحليل وكود**: Excel بمعادلات ورسوم، PowerPoint، Word، PDF، تحليل ملف أرسله المالك، حسابات معقدة، رسوم بيانية ← فوّض لـ builder (وكيل الملفات والتحليل). إذا فيه ملف مرفق من المالك مرر file_ids.
 • **خدمات خارجية متصلة (MCP)**: ${mcp.length ? 'متصل الآن: ' + mcp.map(m => m.label || m.name).join('، ') + ' — استخدم أدواتها مباشرة لتنفيذ طلبات المالك فيها (مثلاً GitHub: مستودعات/ملفات/Issues، Zapier: آلاف التطبيقات). أي تغيير مهم أو حذف في خدمة خارجية اشرح للمالك وش بتسوي قبل ما تنفذه.' : 'ما فيه خدمات متصلة حالياً؛ لو طلب المالك شي في تطبيق خارجي (GitHub، Notion، Trello...) قل له يربطه من لوحة التحكم ← الإعدادات ← الخدمات المتصلة.'}

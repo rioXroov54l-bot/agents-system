@@ -170,6 +170,8 @@ async function handleEvolution(body) {
     const parsed = await parse(msg);
     if (isOwner(num)) { handleOwner(num, parsed).catch(e => console.error('wa owner', e.message)); continue; }
     const watched = await W.get(num), st = await db.getSettings();
+    // شخص المالك موكلني أكمل معه المحادثة بنفسي
+    if (watched && watched.auto) { require('./delegate').incoming(num, msg.pushName, parsed, watched).catch(e => console.error('delegate in', e.message)); continue; }
     // شخص تحت المراقبة، أو وضع «أبلغني برسائل الناس»: نوصّل رسالته للمالك ولا نرد عليه
     if (watched || (!st.reply_others && st.forward_others !== false)) {
       let heard = '';

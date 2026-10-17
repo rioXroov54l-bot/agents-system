@@ -493,7 +493,7 @@ def('list_emails', 'الإيميلات اللي وصلت للنظام وانحف
   async ({ important_only, unhandled_only, limit = 15 }) => db.many('SELECT id, from_addr, subject, summary, category, important, handled, at FROM emails WHERE (NOT $1 OR important) AND (NOT $2 OR NOT handled) ORDER BY at DESC LIMIT $3', [!!important_only, !!unhandled_only, Math.min(limit, 50)]));
 
 // ---------- مراقبة ردود واتساب ----------
-def('watch_whatsapp', 'راقب رسائل شخص على رقم السكرتير: أي رسالة منه توصل للمالك فوراً (تيليجرام/واتساب) بدون ما يرد عليه السكرتير. استخدمها لما يقول المالك "إذا رد عليك فلان بلغني/انسخ لي رده".',
+def('watch_whatsapp', 'راقب رسائل شخص على رقم السكرتير: أي رسالة منه توصل للمالك فوراً (تيليجرام/واتساب) بدون ما يرد عليه السكرتير. استخدمها لما يقول المالك "إذا رد عليك فلان بلغني/انسخ لي رده". (لو يبي السكرتير يرد عليه ويكمل معه بنفسه استخدم handle_contact)',
   S({ phone: str('رقم الجوال 05xxxxxxxx'), name: str('اسمه (اختياري)'), note: str('ليش نراقبه (اختياري)'), days: int('كم يوم (افتراضي 30)') }, ['phone']),
   async ({ phone, name, note, days }) => { const w = await require('./watch').add(ch.saNumber(phone), { name, note, days }); return `✅ أراقب ${name || phone} لين ${w.until.slice(0, 10)}: أي رسالة منه بتوصلك فوراً.`; });
 def('unwatch_whatsapp', 'أوقف مراقبة رسائل شخص.', S({ phone: str('رقم الجوال') }, ['phone']),
