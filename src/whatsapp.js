@@ -107,10 +107,19 @@ async function handleOwner(num, { text, attachment, file, doc, voice, audio, med
   const payReply = t ? await require('./pay').handleOwnerText(t).catch(e => '⚠️ ' + e.message) : null;
   if (payReply) return reply(payReply);
   if (!t && !attachment) return;
+  // الصور: نجمع اللي تنرسل ورا بعض (ألبوم + التعليق أو الطلب اللي بعدها) في طلب واحد
+  const MD = require('./media');
+  const isImg = attachment && attachment.type === 'image';
+  if (MD.collect('wa:' + num, { image: isImg ? attachment : null, text: isImg ? t : (attachment ? '' : t) }, (imgs, txt) =>
+    MD.prepareImages(imgs, txt).then(p => runOwner(num, p.text, p.attachments)).catch(e => reply('⚠️ ' + e.message.slice(0, 150))))) { typing(num); return; }
+  return runOwner(num, t, attachment ? [attachment] : []);
+}
+
+async function runOwner(num, t, atts) {
+  const reply = x => ch.sendWhatsApp(num, x);
   typing(num);
   const timer = setInterval(() => typing(num), 8000);
   try {
-    const atts = attachment ? [attachment] : [];
     // لو الذكاء الاصطناعي انقطع أو خلص الرصيد: الطلب ينحفظ ويتنفذ تلقائياً بعدين
     const out = await require('./health').runOrQueue({ channel: 'whatsapp', text: t, attachments: atts }, () => A().runManager(t, { attachments: atts, channel: 'whatsapp', progress: p => reply(p) }));
     await reply(out);

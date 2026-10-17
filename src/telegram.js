@@ -141,6 +141,18 @@ async function handleUpdate(u) {
   } catch (e) { return ch.tgSend(chatId, '⚠️ ' + e.message); }
 
   if (!text && !attachments.length) return;
+  // الصور: نجمع الألبوم (والطلب اللي بعده) في طلب واحد
+  const MD = require('./media');
+  const img = attachments.find(a => a.type === 'image');
+  if (MD.collect('tg:' + chatId, { image: img || null, text: img ? text : (attachments.length ? '' : text) }, (imgs, txt) =>
+    MD.prepareImages(imgs, txt).then(p => runOwnerTg(chatId, p.text, p.attachments)).catch(e => ch.tgSend(chatId, '⚠️ ' + e.message.slice(0, 150))))) {
+    ch.tg('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});
+    return;
+  }
+  return runOwnerTg(chatId, text, attachments);
+}
+
+async function runOwnerTg(chatId, text, attachments) {
   // تشغيل المدير مع مؤشر "يكتب"
   const typing = setInterval(() => ch.tg('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {}), 4500);
   ch.tg('sendChatAction', { chat_id: chatId, action: 'typing' }).catch(() => {});

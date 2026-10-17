@@ -16,6 +16,7 @@ require('./power'); // ملفات وتحليل وخدمات خارجية
 require('./web'); // التنفيذ على المواقع بمتصفح حقيقي
 const H = require('./health'); // الاستهلاك، المراقبة، الطلبات المحفوظة، قوة العقل
 require('./phone'); // التحكم بجوال المالك عبر الماك
+require('./media'); // تحويل صور وملفات المالك لأي صيغة
 const personal = require('./personal');
 
 const WEB_SEARCH = { spec: { type: 'web_search_20250305', name: 'web_search', max_uses: 10, user_location: { type: 'approximate', country: 'SA', city: 'Riyadh', timezone: 'Asia/Riyadh' } } };
@@ -204,11 +205,11 @@ async function finishRun(run, result, status = 'done') {
 
 // تشغيل وكيل متخصص
 const CODE_EXEC = { spec: { type: 'code_execution_20260521', name: 'code_execution' } };
-async function runSpecialist(key, task, { input, onStep, byOwner = false, channel, fileIds = [] } = {}) {
+async function runSpecialist(key, task, { input, onStep, byOwner = false, channel, fileIds = [], extraBlocks = [] } = {}) {
   const a = AGENTS[key];
   if (!a) throw new Error('وكيل غير معروف: ' + key);
   const tools = pick(...a.tools); if (a.codeExec) tools.push(CODE_EXEC); if (a.web) tools.push(WEB_SEARCH);
-  if (a.codeExec && fileIds.length) input = [{ type: 'text', text: task }, ...fileIds.map(id => ({ type: 'container_upload', file_id: id }))];
+  if (a.codeExec && (fileIds.length || extraBlocks.length)) input = [{ type: 'text', text: task }, ...fileIds.map(id => ({ type: 'container_upload', file_id: id })), ...extraBlocks];
   const system = `أنت "${a.name}" ضمن فريق السكرتارية الشخصية للمالك.\n${a.role}\n\n${await companyContext()}\n\nعند الانتهاء اكتب تقريراً مختصراً لما نفذته فعلاً مع الأرقام والروابط، وما يحتاج قرار المالك إن وجد.`;
   const run = await startRun(key, task);
   await db.log('agent', `${a.icon} ${a.name} بدأ: ${String(task).slice(0, 120)}`, key);
@@ -283,6 +284,7 @@ async function runManagerInner(text, { attachments = [], channel = 'dashboard', 
 • تقويم Google كامل: google_calendar/calendar_add/calendar_edit/calendar_remove/calendar_free_time.
 • الطقس weather، مواقيت الصلاة prayer_times، التحويل الهجري convert_date، العملات currency_convert، والبحث في الإنترنت.
 • تذكيرات للمالك نفسه set_reminder (تنبيه على تيليجرام/واتساب).
+• **تحويل الصور والملفات لأي صيغة**: المالك يرسل صورة/صور/ملف ويطلب صيغة ← PDF: images_to_pdf (فوري، كل صورة صفحة، يقدر يختار A4 أو مقاس الصورة). أي صيغة ثانية في الدنيا (Word، Excel، PowerPoint، PNG، JPG، WEBP، TIFF، GIF، ICO، نص مستخرج، ضغط، دمج، تقسيم، قص، أبيض وأسود، شكل سكانر...) ← convert_files مع target والتفاصيل. المراجع m_... مكتوبة في رسالته، أو my_recent_images لآخر الصور. لا تقول «ما أقدر» على صيغة — جرّب.
 • **ملفات حقيقية وتحليل وكود**: Excel بمعادلات ورسوم، PowerPoint، Word، PDF، تحليل ملف أرسله المالك، حسابات معقدة، رسوم بيانية ← فوّض لـ builder (وكيل الملفات والتحليل). إذا فيه ملف مرفق من المالك مرر file_ids.
 • **خدمات خارجية متصلة (MCP)**: ${mcp.length ? 'متصل الآن: ' + mcp.map(m => m.label || m.name).join('، ') + ' — استخدم أدواتها مباشرة لتنفيذ طلبات المالك فيها (مثلاً GitHub: مستودعات/ملفات/Issues، Zapier: آلاف التطبيقات). أي تغيير مهم أو حذف في خدمة خارجية اشرح للمالك وش بتسوي قبل ما تنفذه.' : 'ما فيه خدمات متصلة حالياً؛ لو طلب المالك شي في تطبيق خارجي (GitHub، Notion، Trello...) قل له يربطه من لوحة التحكم ← الإعدادات ← الخدمات المتصلة.'}
 • **مستندات احترافية** publish_document: أي تقرير/دراسة/مقارنة/خطاب/سيرة ذاتية/دليل ← رابط أنيق يحفظ PDF. الطلبات الكبيرة فوّضها لوكيل البحث والتقارير.
