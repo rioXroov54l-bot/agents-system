@@ -12,7 +12,10 @@ const DENY_APPS = /bank|بنك|مصرف|rajhi|راجحي|ahli|الأهلي|snb|a
 const sha = s => crypto.createHash('sha256').update(String(s)).digest('hex');
 
 // ---------- حالة الجسر ----------
-let lastSeen = 0, savedAt = 0, info = {};
+let lastSeen = 0, savedAt = 0, info = {}, inflight = 0;
+// نسخة الجسر الحالية (الجسر على الماك يتحدث لحاله لو اختلفت)
+let BRIDGE_VERSION = '';
+try { BRIDGE_VERSION = (require('fs').readFileSync(require('path').join(__dirname, '..', 'deploy', 'phone', 'phone_bridge.py'), 'utf8').match(/VERSION = "([^"]+)"/) || [])[1] || ''; } catch (_) {}
 const queue = [];              // أوامر تنتظر الجسر
 const waiting = new Map();     // id → {resolve, reject, timer}
 let poller = null;             // طلب poll مفتوح من الجسر
@@ -26,10 +29,12 @@ async function checkToken(req) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 async function seen(req) {
-  lastSeen = Date.now(); info = { version: req.query.v || '', ip: req.ip };
+  lastSeen = Date.now(); info = { version: req.query.v || (req.body && req.body.v) || info.version || '', ip: req.ip };
   if (Date.now() - savedAt > 60e3) { savedAt = Date.now(); const c = await cfg(); if (c) await db.setSetting('phone_bridge', { ...c, last_seen: new Date().toISOString(), version: info.version }); }
 }
-const connected = () => Date.now() - lastSeen < 75e3;
+// متصل = نبض خلال آخر 75 ثانية، أو فيه أمر شغال عنده الحين
+const connected = () => Date.now() - lastSeen < 75e3 || inflight > 0;
+const ago = () => { if (!lastSeen) return ''; const m = Math.round((Date.now() - lastSeen) / 6e4); return m < 1 ? ' (آخر اتصال قبل أقل من دقيقة)' : ` (آخر اتصال قبل ${m} دقيقة)`; };
 async function status() {
   const c = await cfg();
   if (!c || !c.hash) return { configured: false, connected: false };
@@ -40,7 +45,9 @@ function deliver() {
   while (poller && queue.length) {
     const p = poller; poller = null; clearTimeout(p.timer);
     if (p.res.writableEnded || (p.res.socket && p.res.socket.destroyed)) continue; // الاتصال انقفل: ننتظر الـ poll الجاي
-    p.res.json(queue.shift());
+    const cmd = queue.shift();
+    const w = waiting.get(cmd.id); if (w && !w.taken) { w.taken = true; inflight++; }
+    p.res.json(cmd);
     return;
   }
 }
@@ -49,10 +56,11 @@ function deliver() {
 async function call(op, args = {}, timeoutMs = 90e3) {
   const c = await cfg();
   if (!c || !c.hash) throw new Error('جوالك مو مربوط للحين: لوحة التحكم ← الإعدادات ← «التحكم بجوالك» وشغّل أمر التثبيت على الماك.');
-  if (!connected()) throw new Error('جسر الجوال مو متصل الحين: تأكد إن الماك شغال (مو نايم) ونافذة «جسر جوال السكرتير» مفتوحة فيه.');
+  if (!connected()) throw new Error('جسر الجوال مو متصل الحين' + ago() + ': تأكد إن الماك شغال (مو نايم) ونافذة «جسر جوال السكرتير» مفتوحة فيه (لو انقفلت: Terminal ← open ~/.sakrtir/sakrtir-bridge.command).');
   const id = crypto.randomBytes(8).toString('hex');
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
+      if (waiting.has(id) && waiting.get(id).taken) inflight = Math.max(0, inflight - 1);
       waiting.delete(id);
       const i = queue.findIndex(q => q.id === id); if (i >= 0) queue.splice(i, 1);
       reject(new Error('الجوال ما رد خلال الوقت — ممكن الماك نام أو iPhone Mirroring انقطع.'));
@@ -73,9 +81,15 @@ function mount(app) {
   app.get('/phone-bridge/bridge.py', (_req, res) => {
     try { res.type('text/plain; charset=utf-8').send(fs.readFileSync(file('phone_bridge.py'), 'utf8')); } catch (e) { res.status(500).send('missing'); }
   });
+  app.post('/phone-bridge/ping', async (req, res) => {
+    if (!(await checkToken(req))) return res.sendStatus(401);
+    await seen(req).catch(() => {});
+    res.json({ ok: true, version: BRIDGE_VERSION });
+  });
   app.get('/phone-bridge/poll', async (req, res) => {
     if (!(await checkToken(req))) return res.sendStatus(401);
     await seen(req).catch(() => {});
+    if (BRIDGE_VERSION) res.set('X-Bridge-Version', BRIDGE_VERSION);
     if (poller) { clearTimeout(poller.timer); try { if (!poller.res.writableEnded) poller.res.sendStatus(204); } catch (_) {} }
     const p = { res, timer: setTimeout(() => { if (poller === p) poller = null; try { if (!res.writableEnded) res.sendStatus(204); } catch (_) {} }, 25e3) };
     poller = p;
@@ -86,7 +100,7 @@ function mount(app) {
     if (!(await checkToken(req))) return res.sendStatus(401);
     await seen(req).catch(() => {});
     const b = req.body || {}, w = waiting.get(b.id);
-    if (w) { waiting.delete(b.id); clearTimeout(w.timer); b.ok ? w.resolve(b.result) : w.reject(new Error(friendly(b.error))); }
+    if (w) { waiting.delete(b.id); clearTimeout(w.timer); if (w.taken) inflight = Math.max(0, inflight - 1); b.ok ? w.resolve(b.result) : w.reject(new Error(friendly(b.error))); }
     res.json({ ok: true });
   });
 }
@@ -119,7 +133,12 @@ const img = im => ({ type: 'image', source: { type: 'base64', media_type: 'image
 const act = (op, argsOf, timeout) => async (input, ctx) => { ownerOnly(ctx); return asScreen(await call(op, argsOf(input), timeout)); };
 
 T.phone_status = { name: 'phone_status', description: 'هل جوال المالك جاهز للتحكم (الجسر متصل، iPhone Mirroring جاهز)؟ ابدأ فيه.', input_schema: S({}),
-  handler: async (_i, ctx) => { ownerOnly(ctx); const s = await status(); if (!s.connected) return JSON.stringify(s); return JSON.stringify({ ...s, phone: await call('status', {}, 60e3) }); } };
+  handler: async (_i, ctx) => {
+    ownerOnly(ctx); const s = await status();
+    if (!s.connected) return JSON.stringify({ ...s, problem: 'جسر الجوال مو متصل' + ago() + ' — الماك نايم أو نافذة الجسر مقفلة' });
+    const ph = await call('status', {}, 60e3);
+    return JSON.stringify({ ...s, phone: ph, ready: ph && ph.state === 'ready', what_to_tell_owner: ph && ph.state !== 'ready' ? (ph.hint || ph.detail) : undefined });
+  } };
 T.phone_screen = { name: 'phone_screen', description: 'يقرأ شاشة الجوال الحين: كل النص الظاهر مع نقاط الضغط. screenshot=true يضيف صورة الشاشة (للأيقونات بدون نص) — الصورة مقاسها مكتوب، واستخدم phone_tap_image لنقطة منها.', input_schema: S({ screenshot: { type: 'boolean' } }),
   handler: async ({ screenshot }, ctx) => {
     ownerOnly(ctx);

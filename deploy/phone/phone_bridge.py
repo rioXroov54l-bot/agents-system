@@ -12,12 +12,13 @@ import re
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 import traceback
 import urllib.error
 import urllib.request
 
-VERSION = "1.0"
+VERSION = "1.1"
 SERVER = os.environ.get("SAKRTIR_URL", "").rstrip("/")
 TOKEN = os.environ.get("SAKRTIR_PHONE_TOKEN", "")
 if not SERVER or not TOKEN:
@@ -76,7 +77,20 @@ def op_status(a):
             state = H.connection_state()
         except Exception as e:  # noqa: BLE001
             detail = str(e)[:300]
-    return {"state": state, "detail": detail, "bridge": VERSION}
+    return {"state": state, "detail": detail, "bridge": VERSION, "hint": hint(state + " " + detail)}
+
+
+def hint(text):
+    t = str(text)
+    if re.search(r"unlock|in use|using|locked", t, re.I):
+        return "قفّل الآيفون وخلّه قريب من الماك (المراية توقف لما تستخدم الجوال)"
+    if re.search(r"Accessibility|Screen Recording|permission|not permitted|TCC", t, re.I):
+        return "Terminal يحتاج صلاحية «تسهيلات الاستخدام» و«تسجيل الشاشة» ثم أعد فتح نافذة الجسر"
+    if re.search(r"auth|Touch ID|password|sign", t, re.I):
+        return "iPhone Mirroring يطلب بصمة: افتحه ← الإعدادات (⌘,) ← اختر «المصادقة تلقائياً»"
+    if re.search(r"not running|no window|not found|Connect", t, re.I):
+        return "افتح تطبيق iPhone Mirroring على الماك وتأكد إنه يعرض جوالك"
+    return ""
 
 
 def op_screen(a):
@@ -129,23 +143,100 @@ def http(method, path, body=None, timeout=40):
         return r.status, (json.loads(raw) if raw else None)
 
 
+OP_TIMEOUT = {"open_app": 110, "type": 110, "status": 50, "screen": 80, "screenshot": 80}
+
+
+def run_op(op, args):
+    """ينفذ الأمر بمهلة: لو علق (بصمة، الجوال مفتوح...) نرجع خطأ واضح بدل ما يوقف الجسر."""
+    box = {}
+
+    def work():
+        try:
+            fn = OPS.get(op)
+            if not fn:
+                raise ValueError("أمر غير معروف: " + str(op))
+            box["res"] = fn(args)
+        except Exception as e:  # noqa: BLE001
+            box["err"] = f"{type(e).__name__}: {e}"[:500]
+
+    t = threading.Thread(target=work, daemon=True)
+    t.start()
+    t.join(float(os.environ.get("BRIDGE_OP_TIMEOUT") or OP_TIMEOUT.get(op, 70)))
+    if t.is_alive():
+        raise TimeoutError("الأمر علق على الماك — غالباً iPhone Mirroring ينتظر بصمة أو الجوال مفتوح. " + hint("auth"))
+    if "err" in box:
+        raise RuntimeError(box["err"] + (" — " + hint(box["err"]) if hint(box["err"]) else ""))
+    return box.get("res")
+
+
+def heartbeat():
+    first = True
+    while True:
+        if not first:
+            time.sleep(15)
+        first = False
+        try:
+            _, r = http("POST", "/phone-bridge/ping", {"v": VERSION}, timeout=15)
+            latest = (r or {}).get("version")
+            if latest and latest != VERSION:
+                self_update(latest, hard=True)
+        except Exception:  # noqa: BLE001
+            pass
+
+
+def self_update(latest, hard=False):
+    """السيرفر عنده نسخة أحدث من الجسر: ننزلها ونعيد التشغيل (نافذة الجسر تشغله من جديد تلقائياً)."""
+    try:
+        req = urllib.request.Request(SERVER + "/phone-bridge/bridge.py", headers={"User-Agent": "sakrtir-phone-bridge/" + VERSION})
+        with urllib.request.urlopen(req, timeout=30) as r:
+            code = r.read()
+        if b"OPS = {" not in code:
+            return
+        me = os.path.abspath(__file__)
+        with open(me + ".new", "wb") as f:
+            f.write(code)
+        os.replace(me + ".new", me)
+        print(f"⬆️ تحديث الجسر إلى {latest} — إعادة تشغيل...", flush=True)
+        if hard:
+            os._exit(0)  # من خيط النبض: نطلع فوراً ونافذة الجسر تشغل النسخة الجديدة
+        sys.exit(0)
+    except SystemExit:
+        raise
+    except Exception as e:  # noqa: BLE001
+        print("⚠️ ما قدرت أحدّث الجسر:", str(e)[:100])
+
+
+def poll():
+    req = urllib.request.Request(SERVER + "/phone-bridge/poll?v=" + VERSION, method="GET", headers={
+        "Authorization": "Bearer " + TOKEN, "User-Agent": "sakrtir-phone-bridge/" + VERSION})
+    with urllib.request.urlopen(req, timeout=40) as r:
+        raw = r.read()
+        return r.status, (json.loads(raw) if raw else None), r.headers.get("X-Bridge-Version")
+
+
 def main():
-    print("📱 جسر جوال السكرتير شغال — خلّ هالنافذة مفتوحة، وخلّ الآيفون مقفول وقريب من الماك.")
+    print(f"📱 جسر جوال السكرتير {VERSION} شغال — خلّ هالنافذة مفتوحة، وخلّ الآيفون مقفول وقريب من الماك.")
     print(f"   السيرفر: {SERVER}")
+    try:
+        st = op_status({})
+        print("   حالة المراية:", st["state"], ("— " + st["hint"]) if st.get("hint") else "")
+    except Exception as e:  # noqa: BLE001
+        print("   ⚠️ فحص المراية:", str(e)[:150], "—", hint(str(e)))
+    threading.Thread(target=heartbeat, daemon=True).start()
     backoff = 2
     while True:
         try:
-            st, cmd = http("GET", "/phone-bridge/poll?v=" + VERSION, timeout=40)
+            st, cmd, latest = poll()
             backoff = 2
+            if latest and latest != VERSION:
+                self_update(latest)
             if st == 204 or not cmd:
                 continue
             op, args, cid = cmd.get("op"), cmd.get("args") or {}, cmd.get("id")
             print(time.strftime("%H:%M:%S"), "▶", op, {k: v for k, v in args.items() if k != "text"})
             try:
-                fn = OPS.get(op)
-                if not fn:
-                    raise ValueError("أمر غير معروف: " + str(op))
-                res = {"id": cid, "ok": True, "result": fn(args)}
+                res = {"id": cid, "ok": True, "result": run_op(op, args)}
+                print("   ✓")
             except Exception as e:  # noqa: BLE001
                 res = {"id": cid, "ok": False, "error": f"{type(e).__name__}: {e}"[:500]}
                 print("   ⚠️", res["error"])
