@@ -23,7 +23,7 @@ import traceback
 import urllib.error
 import urllib.request
 
-VERSION = "1.2"
+VERSION = "1.3"
 SERVER = os.environ.get("SAKRTIR_URL", "").rstrip("/")
 TOKEN = os.environ.get("SAKRTIR_PHONE_TOKEN", "")
 if not SERVER or not TOKEN:
@@ -445,14 +445,15 @@ def _xor(data, mask):
 
 def main():
     print(f"📱 جسر جوال السكرتير {VERSION} شغال — خلّ هالنافذة مفتوحة، وخلّ الآيفون مقفول وقريب من الماك.")
-    print(f"   السيرفر: {SERVER}")
+    print(f"   السيرفر: {SERVER}", flush=True)
+    # النبض (والتحديث التلقائي) وطريق المواقع السعودية يبدون أول — ما ينتظرون فحص المراية لو علق
+    threading.Thread(target=heartbeat, daemon=True).start()
+    threading.Thread(target=Tunnel().run, daemon=True).start()
     try:
-        st = op_status({})
+        st = run_op("status", {})
         print("   حالة المراية:", st["state"], ("— " + st["hint"]) if st.get("hint") else "")
     except Exception as e:  # noqa: BLE001
         print("   ⚠️ فحص المراية:", str(e)[:150], "—", hint(str(e)))
-    threading.Thread(target=heartbeat, daemon=True).start()
-    threading.Thread(target=Tunnel().run, daemon=True).start()
     backoff = 2
     while True:
         try:
