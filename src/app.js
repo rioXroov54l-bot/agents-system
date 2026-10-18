@@ -409,7 +409,8 @@ app.post('/api/settings', wrap(async (req, res) => {
 async function start() {
   await db.connect();
   { const s = await db.getSettings(); if (s.owner_phone) C.OWNER_PHONE = String(s.owner_phone).replace(/\D/g, ''); if (s.tg_token) C.TELEGRAM_BOT_TOKEN = s.tg_token; }
-  app.listen(C.PORT, () => console.log('🚀 النظام شغال على المنفذ', C.PORT, '(قاعدة بيانات)'));
+  const server = app.listen(C.PORT, () => console.log('🚀 النظام شغال على المنفذ', C.PORT, '(قاعدة بيانات)'));
+  require('./tunnel').attach(server); // «طريق الماك» للمواقع السعودية (WebSocket من جسر الماك + بروكسي SOCKS داخلي للمتصفح)
   await ch.setupTelegramWebhook();
   (async () => { for (let i = 0; i < 20; i++) { try { await ch.evo('GET', '/'); break; } catch (_) { if (!ch.evoEnabled()) return; await new Promise(r => setTimeout(r, 15000)); } } await ch.setupEvolution(); })();
   scheduler.start();

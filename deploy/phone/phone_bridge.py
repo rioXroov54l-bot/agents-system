@@ -6,6 +6,11 @@
 (نافذة iPhone Mirroring). ما ينفذ أي كود يجيه من السيرفر — بس قائمة أوامر ثابتة هنا.
 """
 import base64
+import ipaddress
+import socket
+import ssl
+import struct
+import urllib.parse
 import json
 import os
 import re
@@ -18,7 +23,7 @@ import traceback
 import urllib.error
 import urllib.request
 
-VERSION = "1.1"
+VERSION = "1.2"
 SERVER = os.environ.get("SAKRTIR_URL", "").rstrip("/")
 TOKEN = os.environ.get("SAKRTIR_PHONE_TOKEN", "")
 if not SERVER or not TOKEN:
@@ -27,7 +32,9 @@ if not SERVER or not TOKEN:
 try:
     from phone_harness import helpers as H
 except Exception as e:  # noqa: BLE001
-    sys.exit(f"❌ phone-harness مو مثبت: {e}")
+    # بدون phone-harness: التحكم بالجوال ما يشتغل، لكن «طريق الماك» للمواقع السعودية يشتغل عادي
+    print(f"⚠️ phone-harness مو مثبت ({e}) — التحكم بالجوال متوقف، وطريق المواقع السعودية شغال.")
+    H = None
 
 # تطبيقات ممنوعة: البنوك والمحافظ وكلمات السر والاستثمار
 DENY_APPS = re.compile(
@@ -214,6 +221,228 @@ def poll():
         return r.status, (json.loads(raw) if raw else None), r.headers.get("X-Bridge-Version")
 
 
+# ---------- «طريق الماك» للمواقع السعودية ----------
+# بعض المواقع (التأمين والحكومية...) تحجب السيرفرات اللي برا السعودية. هنا نفتح اتصال خارج للسيرفر (WebSocket)،
+# والسيرفر يمرر فيه طلبات متصفح وكيل المواقع، والماك يفتحها من إنترنت البيت.
+# الأمان: نقبل المنافذ 80/443 فقط، ونرفض أي عنوان داخلي (الراوتر، شبكة البيت، الماك نفسه).
+T_OPEN, T_OK, T_FAIL, T_DATA, T_CLOSE = 1, 2, 3, 4, 5
+TUN_PORTS = {80, 443}
+
+
+def _public_ip(ip):
+    a = ipaddress.ip_address(ip)
+    if getattr(a, "ipv4_mapped", None):
+        a = a.ipv4_mapped
+    return not (a.is_private or a.is_loopback or a.is_link_local or a.is_multicast or a.is_reserved
+                or a.is_unspecified or (a.version == 4 and a in ipaddress.ip_network("100.64.0.0/10")))
+
+
+class Tunnel:
+    def __init__(self):
+        self.sock = None
+        self.lock = threading.Lock()
+        self.conns = {}
+        self.online = False
+
+    # --- WebSocket client (stdlib) ---
+    def _connect(self):
+        u = urllib.parse.urlparse(SERVER)
+        host, port = u.hostname, u.port or (443 if u.scheme == "https" else 80)
+        raw = socket.create_connection((host, port), timeout=20)
+        s = ssl.create_default_context().wrap_socket(raw, server_hostname=host) if u.scheme == "https" else raw
+        key = base64.b64encode(os.urandom(16)).decode()
+        path = (u.path.rstrip("/") or "") + "/phone-bridge/tunnel"
+        s.sendall((f"GET {path} HTTP/1.1\r\nHost: {u.netloc}\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n"
+                   f"Sec-WebSocket-Key: {key}\r\nSec-WebSocket-Version: 13\r\nAuthorization: Bearer {TOKEN}\r\n"
+                   f"User-Agent: sakrtir-phone-bridge/{VERSION}\r\n\r\n").encode())
+        head = b""
+        while b"\r\n\r\n" not in head:
+            c = s.recv(1024)
+            if not c:
+                raise ConnectionError("السيرفر قفل الاتصال")
+            head += c
+        status = head.split(b"\r\n", 1)[0]
+        if b" 101 " not in status + b" ":
+            code = status.split(b" ")[1].decode() if len(status.split(b" ")) > 1 else "?"
+            raise PermissionError(code)
+        self._pending = head.split(b"\r\n\r\n", 1)[1]
+        s.settimeout(None)
+        return s
+
+    def _send_frame(self, op, payload=b""):
+        n = len(payload)
+        hdr = bytes([0x80 | op])
+        if n < 126:
+            hdr += bytes([0x80 | n])
+        elif n < 65536:
+            hdr += bytes([0x80 | 126]) + struct.pack(">H", n)
+        else:
+            hdr += bytes([0x80 | 127]) + struct.pack(">Q", n)
+        mask = os.urandom(4)
+        body = bytes(b ^ mask[i & 3] for i, b in enumerate(payload)) if n < 4096 else _xor(payload, mask)
+        with self.lock:
+            if self.sock:
+                self.sock.sendall(hdr + mask + body)
+
+    def send(self, typ, cid, data=b""):
+        try:
+            self._send_frame(0x2, bytes([typ]) + struct.pack(">I", cid) + data)
+        except Exception:  # noqa: BLE001
+            pass
+
+    def _recv_exact(self, n):
+        out = b""
+        if self._pending:
+            out, self._pending = self._pending[:n], self._pending[n:]
+        while len(out) < n:
+            c = self.sock.recv(n - len(out))
+            if not c:
+                raise ConnectionError("انقطع")
+            out += c
+        return out
+
+    def _read_frame(self):
+        b0, b1 = self._recv_exact(2)
+        op, n = b0 & 0x0F, b1 & 0x7F
+        if n == 126:
+            n = struct.unpack(">H", self._recv_exact(2))[0]
+        elif n == 127:
+            n = struct.unpack(">Q", self._recv_exact(8))[0]
+        if b1 & 0x80:
+            mask = self._recv_exact(4)
+            return op, _xor(self._recv_exact(n), mask)
+        return op, self._recv_exact(n)
+
+    # --- streams ---
+    def _open(self, cid, data):
+        try:
+            req = json.loads(data.decode())
+            host, port = str(req["h"]), int(req["p"])
+            if port not in TUN_PORTS:
+                raise PermissionError("منفذ غير مسموح")
+            infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+            ips = [i[4][0] for i in infos]
+            if not ips or not all(_public_ip(ip) for ip in ips):
+                raise PermissionError("عنوان داخلي ممنوع")
+            last = None
+            for fam, _t, _p, _c, addr in infos:
+                try:
+                    c = socket.socket(fam, socket.SOCK_STREAM)
+                    c.settimeout(15)
+                    c.connect(addr)
+                    break
+                except OSError as e:
+                    last = e
+                    c = None
+            if c is None:
+                raise last or OSError("ما قدرت أتصل")
+            c.settimeout(None)
+            self.conns[cid] = c
+            self.send(T_OK, cid)
+            threading.Thread(target=self._pump, args=(cid, c), daemon=True).start()
+        except Exception as e:  # noqa: BLE001
+            self.send(T_FAIL, cid, str(e)[:200].encode())
+
+    def _pump(self, cid, c):
+        try:
+            while True:
+                d = c.recv(65536)
+                if not d:
+                    break
+                self.send(T_DATA, cid, d)
+        except OSError:
+            pass
+        if self.conns.pop(cid, None) is not None:
+            self.send(T_CLOSE, cid)
+        try:
+            c.close()
+        except OSError:
+            pass
+
+    def _close_all(self):
+        for c in list(self.conns.values()):
+            try:
+                c.close()
+            except OSError:
+                pass
+        self.conns.clear()
+
+    def _pinger(self, s):
+        while self.sock is s:
+            time.sleep(20)
+            try:
+                self._send_frame(0x9)
+            except Exception:  # noqa: BLE001
+                return
+
+    def run(self):
+        backoff = 3
+        while True:
+            try:
+                self._pending = b""
+                self.sock = self._connect()
+                self.online, backoff = True, 3
+                print("🏠 طريق الماك للمواقع السعودية: متصل", flush=True)
+                threading.Thread(target=self._pinger, args=(self.sock,), daemon=True).start()
+                while True:
+                    op, payload = self._read_frame()
+                    if op == 0x8:
+                        break
+                    if op == 0x9:
+                        self._send_frame(0xA, payload)
+                        continue
+                    if op != 0x2 or len(payload) < 5:
+                        continue
+                    typ, cid, data = payload[0], struct.unpack(">I", payload[1:5])[0], payload[5:]
+                    if typ == T_OPEN:
+                        threading.Thread(target=self._open, args=(cid, data), daemon=True).start()
+                    elif typ == T_DATA:
+                        c = self.conns.get(cid)
+                        if c:
+                            try:
+                                c.sendall(data)
+                            except OSError:
+                                self.conns.pop(cid, None)
+                                self.send(T_CLOSE, cid)
+                        else:
+                            self.send(T_CLOSE, cid)
+                    elif typ == T_CLOSE:
+                        c = self.conns.pop(cid, None)
+                        if c:
+                            try:
+                                c.shutdown(socket.SHUT_RDWR)
+                            except OSError:
+                                pass
+                            c.close()
+            except PermissionError as e:
+                if str(e) == "401":
+                    time.sleep(300)
+                    continue
+                if str(e) == "404":  # السيرفر لسا ما تحدث
+                    time.sleep(120)
+                    continue
+                print("⚠️ طريق الماك:", e, flush=True)
+            except Exception as e:  # noqa: BLE001
+                if self.online:
+                    print("⚠️ طريق الماك انقطع:", str(e)[:100], flush=True)
+            self.online = False
+            s, self.sock = self.sock, None
+            try:
+                s and s.close()
+            except OSError:
+                pass
+            self._close_all()
+            time.sleep(backoff)
+            backoff = min(backoff * 2, 60)
+
+
+def _xor(data, mask):
+    if not data:
+        return b""
+    m = int.from_bytes((mask * (len(data) // 4 + 1))[:len(data)], "big")
+    return (int.from_bytes(data, "big") ^ m).to_bytes(len(data), "big")
+
+
 def main():
     print(f"📱 جسر جوال السكرتير {VERSION} شغال — خلّ هالنافذة مفتوحة، وخلّ الآيفون مقفول وقريب من الماك.")
     print(f"   السيرفر: {SERVER}")
@@ -223,6 +452,7 @@ def main():
     except Exception as e:  # noqa: BLE001
         print("   ⚠️ فحص المراية:", str(e)[:150], "—", hint(str(e)))
     threading.Thread(target=heartbeat, daemon=True).start()
+    threading.Thread(target=Tunnel().run, daemon=True).start()
     backoff = 2
     while True:
         try:

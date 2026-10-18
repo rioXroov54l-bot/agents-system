@@ -5,6 +5,7 @@ const C = require('./config');
 const db = require('./db');
 const ch = require('./channels');
 const { T } = require('./tools');
+const tunnel = require('./tunnel');
 
 let pw; const PW = () => (pw = pw || require('playwright-core'));
 const WS = () => process.env.BROWSER_WS || '';
@@ -53,19 +54,46 @@ async function session(ctx) {
     await db.log('error', '🌐 المتصفح: ' + why).catch(() => {});
     throw new Error('خدمة المتصفح على السيرفر ما ردت — ' + why);
   }
-  const context = await browser.newContext({ locale: 'ar-SA', timezoneId: 'Asia/Riyadh', viewport: { width: 1280, height: 900 }, userAgent: UA, acceptDownloads: false, ignoreHTTPSErrors: false });
-  await context.route('**/*', r => isInternal(r.request().url()) ? r.abort('blockedbyclient') : r.continue());
-  const s = { browser, context, page: await context.newPage(), dialogs: [], refs: new Map(), host: '' };
-  const hook = p => {
-    p.setDefaultTimeout(20000);
-    p.on('dialog', d => { s.dialogs.push(d.message().slice(0, 300)); d.accept().catch(() => {}); });
-  };
-  hook(s.page);
-  context.on('page', p => { hook(p); s.page = p; }); // نافذة جديدة ← نكمل فيها
+  const s = { browser, dialogs: [], refs: new Map(), host: '', viaMac: false };
+  await newContext(s, false);
   ctx.web = s;
   (ctx.cleanup = ctx.cleanup || []).push(() => browser.close().catch(() => {}));
   return s;
 }
+// سياق متصفح جديد — viaMac=true: يطلع للإنترنت عن طريق ماك المالك (للمواقع اللي تحجب السيرفرات برا السعودية)
+async function newContext(s, viaMac) {
+  if (s.context) await s.context.close().catch(() => {});
+  const opts = { locale: 'ar-SA', timezoneId: 'Asia/Riyadh', viewport: { width: 1280, height: 900 }, userAgent: UA, acceptDownloads: false, ignoreHTTPSErrors: false };
+  if (viaMac) opts.proxy = { server: MAC_PROXY() };
+  const context = await s.browser.newContext(opts);
+  await context.route('**/*', r => isInternal(r.request().url()) ? r.abort('blockedbyclient') : r.continue());
+  s.context = context; s.viaMac = !!viaMac; s.refs = new Map();
+  const hook = p => {
+    p.setDefaultTimeout(20000);
+    p.on('dialog', d => { s.dialogs.push(d.message().slice(0, 300)); d.accept().catch(() => {}); });
+  };
+  s.page = await context.newPage(); hook(s.page);
+  context.on('page', p => { hook(p); s.page = p; }); // نافذة جديدة ← نكمل فيها
+  return s;
+}
+
+// ---------- «طريق الماك» للمواقع السعودية ----------
+const MAC_PROXY = () => process.env.TUNNEL_PROXY || `socks5://agents:${tunnel.SOCKS_PORT}`;
+const hostOf = u => { try { return new URL(u).hostname.toLowerCase().replace(/^www\./, ''); } catch (_) { return ''; } };
+async function macHosts() { return (await db.getSettings().catch(() => ({}))).web_mac_hosts || []; }
+// المواقع السعودية (.sa) أو اللي سبق وحجبت السيرفر ← نروح لها عن طريق الماك مباشرة
+async function prefersMac(host) {
+  if (!host) return false;
+  if (/\.sa$/.test(host)) return true;
+  const list = await macHosts();
+  return list.some(h => host === h || host.endsWith('.' + h));
+}
+async function rememberMac(host) {
+  if (!host || /\.sa$/.test(host)) return;
+  const list = await macHosts();
+  if (!list.includes(host)) await db.setSetting('web_mac_hosts', [...list, host].slice(-100)).catch(() => {});
+}
+const NO_MAC = 'الحل: خلّ الماك شغال (مو نايم) ونافذة «جسر السكرتير» مفتوحة فيه — وقتها أفتح المواقع السعودية عن طريق إنترنت بيتك تلقائياً.';
 async function settle(page) {
   await page.waitForLoadState('domcontentloaded', { timeout: 15000 }).catch(() => {});
   await page.waitForLoadState('networkidle', { timeout: 6000 }).catch(() => {});
@@ -176,11 +204,30 @@ T.web_open = { name: 'web_open', description: 'يفتح رابط في المتص
     ownerOnly(ctx);
     if (!/^https?:\/\//i.test(url || '')) url = 'https://' + String(url || '').replace(/^\/+/, '');
     if (isInternal(url)) throw new Error('رابط غير مسموح');
+    const host = hostOf(url);
     const s = await session(ctx);
-    const r = await s.page.goto(url, { waitUntil: 'domcontentloaded', timeout: 45000 }).catch(e => { throw new Error(/timeout/i.test(e.message) ? 'الموقع ما فتح (انتهى الوقت) — ممكن يكون حاجب الدخول من خارج السعودية أو واقف' : 'الموقع ما فتح: ' + e.message.split('\n')[0].slice(0, 160)); });
+    // المواقع السعودية: نفتحها عن طريق الماك من البداية (لو متصل)
+    if (!s.viaMac && tunnel.online() && await prefersMac(host)) await newContext(s, true);
+    const go = () => s.page.goto(url, { waitUntil: 'domcontentloaded', timeout: s.viaMac ? 60000 : 30000 }).then(r => ({ r }), e => ({ e }));
+    let { r, e } = await go();
+    const blocked = x => x.e ? /timeout|ERR_(CONNECTION|TIMED_OUT|NAME|ADDRESS|EMPTY|SOCKS|TUNNEL|PROXY|NETWORK)/i.test(x.e.message) : (x.r && [403, 451].includes(x.r.status()));
+    if (!s.viaMac && blocked({ r, e })) {
+      // السيرفر برا السعودية ومحجوب ← نعيد عن طريق الماك
+      if (tunnel.online()) {
+        await newContext(s, true);
+        ({ r, e } = await go());
+        if (!e && r && r.status() < 400) await rememberMac(host);
+      } else {
+        await db.log('web', `🌐 ${host} ما فتح من السيرفر وطريق الماك مو متصل`).catch(() => {});
+        throw new Error(`الموقع ما فتح من السيرفر (${e ? 'انتهى الوقت' : 'رد ' + r.status()}) — غالباً يحجب الدخول من خارج السعودية. ${NO_MAC}`);
+      }
+    }
+    if (e) throw new Error(s.viaMac
+      ? (/timeout/i.test(e.message) ? 'الموقع ما فتح حتى عن طريق الماك (انتهى الوقت) — غالباً الموقع واقف أو بطيء الحين، أو الماك نام.' : 'الموقع ما فتح عن طريق الماك: ' + e.message.split('\n')[0].slice(0, 160))
+      : 'الموقع ما فتح: ' + e.message.split('\n')[0].slice(0, 160));
     await settle(s.page);
     const st = r ? r.status() : 0;
-    return (st >= 400 ? `⚠️ الموقع رد بخطأ ${st}${st === 403 ? ' (غالباً حاجب الدخول من السيرفر)' : ''}\n\n` : '') + await snapshot(s);
+    return (s.viaMac ? '🏠 (فتحته عن طريق إنترنت ماك المالك في السعودية)\n' : '') + (st >= 400 ? `⚠️ الموقع رد بخطأ ${st}${st === 403 ? ' (غالباً حاجب الدخول' + (s.viaMac ? ' أو يشك إنه روبوت' : ' من السيرفر') + ')' : ''}\n\n` : '') + await snapshot(s);
   } };
 T.web_read = { name: 'web_read', description: 'يقرأ الصفحة الحالية من جديد (النص والعناصر المرقمة). full=true لنص أطول.', input_schema: S({ full: { type: 'boolean' } }),
   handler: async ({ full }, ctx) => { ownerOnly(ctx); const s = await session(ctx); await settle(s.page); return snapshot(s, { max: full ? 15000 : 5000 }); } };

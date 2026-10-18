@@ -288,6 +288,7 @@ async function status() {
   L.push(`${brOk === true ? '✅' : '❌'} المتصفح (الحجز وتعبئة النماذج في المواقع)${brOk === true ? '' : process.env.BROWSER_WS ? ' — ' + (typeof brOk === 'string' ? brOk : 'ما رد') : ' — غير مفعّل'}`);
   const ph = await require('./phone').status().catch(() => ({}));
   if (ph.configured) L.push(`${ph.connected ? '✅' : '❌'} جوالك (عبر الماك)${ph.connected ? '' : ' — الجسر مو متصل' + (ph.last_seen ? ' (آخر اتصال ' + U.fmt(ph.last_seen).slice(5) + ')' : '') + ': تأكد الماك شغال ونافذة الجسر مفتوحة'}`);
+  if (ph.configured) { const tn = require('./tunnel').status(); L.push(`${tn.online ? '✅' : '❌'} طريق الماك للمواقع السعودية${tn.online ? ' (المواقع اللي تحجب السيرفر تنفتح عن طريق إنترنت بيتك)' : ' — مو متصل: الماك نايم أو نافذة الجسر مقفلة' + (ph.connected ? ' (أو الجسر يحتاج تحديث — يتحدث لحاله خلال دقيقة)' : '')}`); }
   L.push(`${ok(n8nOk)} n8n`);
   L.push('', `⚙️ آخر تحديث للسكرتير: ${build ? U.fmt(build) : '—'}`, `⏱️ شغال من: ${Math.round(process.uptime() / 3600 * 10) / 10} ساعة`,
     `🧠 الذاكرة: ${Math.round((mem - free) / 1e9 * 10) / 10}/${Math.round(mem / 1e9 * 10) / 10} GB | الضغط: ${load.toFixed(2)}${disk ? ' | 💾 ' + disk : ''}`,
