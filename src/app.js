@@ -368,6 +368,8 @@ app.post('/api/whatsapp/pair', wrap(async (req, res) => res.json(await ch.evoPai
 app.post('/api/whatsapp/logout', wrap(async (_req, res) => { await ch.evoLogout(); res.json({ message: 'انفصل الرقم' }); }));
 
 // ---------- نقل لسيرفر جديد: كود مؤقت + تصدير كامل ----------
+app.get('/api/admin/update', wrap(async (_req, res) => res.json(require('./updater').status())));
+app.post('/api/admin/update', wrap(async (_req, res) => { const st = require('./updater').request(); await db.log('settings', '⬆️ طلب تحديث فوري من اللوحة'); res.json({ ...st, message: st.supported ? '⬆️ طلبت التحديث — خلال دقيقة يبدأ' : '⬆️ انحفظ الطلب — أول مرة يتفعل مع التحديث التلقائي الجاي (10-20 دقيقة)' }); }));
 app.post('/api/admin/migrate-code', wrap(async (_req, res) => {
   const code = crypto.randomBytes(9).toString('base64url');
   await db.setSetting('migrate', { code, expires: Date.now() + 2 * 3600e3 });

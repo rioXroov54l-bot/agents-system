@@ -400,6 +400,9 @@ async function settings(v) {
     <b>١) اختصار «السكرتير» لسيري:</b> تطبيق الاختصارات ← اختصار جديد ← «إملاء النص» ← «الحصول على محتويات URL» (الرابط فوق، الطريقة POST، نص الطلب JSON: المفتاح <code>text</code> = النص المملى) ← «تحدث بالنص». سمّه «السكرتير» وقل: «يا سيري، السكرتير».<br>
     <b>٢) رسائل البنك تلقائياً:</b> الاختصارات ← الأتمتة ← «الرسالة» ← المرسل يحتوي اسم بنكك ← تشغيل فوري ← «الحصول على محتويات URL» (نفس الرابط، POST، JSON: <code>sms</code> = محتوى الرسالة، <code>sender</code> = المرسل). كررها لكل بنك.</div>
   </div>
+  <div class="card" id="updcard"><h2>⬆️ تحديث السكرتير</h2><div class="small" style="line-height:1.9">السيرفر يسحب التحديثات لحاله كل 10 دقايق. تبيها الحين؟ اضغط الزر (أو اكتب للسكرتير «حدّث الآن»).</div>
+    <div id="updbox" class="small" style="margin:6px 0">⏳</div>
+    <button class="sm" onclick="updateNow()">⬆️ حدّث الآن</button></div>
   <div class="card"><h2>📦 النقل لسيرفر جديد</h2><div class="small" style="line-height:1.9">يطلع كود مؤقت (ساعتين، يستخدم مرة وحدة) يحتاجه سكربت التثبيت عشان ينقل بياناتك وإعداداتك.</div>
     <button class="sm" onclick="api('/api/admin/migrate-code',{}).then(r=>{$('#mcode').innerHTML='الكود: <code>'+r.code+'</code>'})">إنشاء كود نقل</button> <span id="mcode" class="small"></span></div>
   <div class="card small" style="line-height:1.9">🔒 <b>للأمان:</b> السكرتير ما يدفع ولا يحوّل ولا يحفظ كلمات سر أو أرقام بطاقات أو رموز OTP. الدفع دائماً منك عبر الروابط اللي يجهزها لك.</div>`;
@@ -522,6 +525,23 @@ async function rotateHook() { if (!confirm('الرابط القديم بيوقف
 
 renderTabs(); go(cur);
 window.addEventListener('hashchange', () => { const k = location.hash.slice(1); if (k && k !== cur) go(k); });
+
+// ---------- تحديث السكرتير ----------
+const UPD = { checking: '🔎 يفحص', updating: '⬆️ يحدّث ويعيد البناء (1-3 دقايق)', done: '✅ تحدّث', uptodate: '✅ على آخر نسخة', failed: '❌ فشل التحديث' };
+async function loadUpdate() {
+  const box = document.getElementById('updbox'); if (!box) return;
+  try {
+    const r = await api('/api/admin/update');
+    const L = [];
+    if (r.pending) L.push('⏳ فيه طلب تحديث ينتظر السيرفر (خلال دقيقة)' + (r.supported ? '' : ' — أول مرة: يتفعل مع التحديث التلقائي الجاي'));
+    if (r.last) L.push('آخر فحص: ' + (UPD[r.last.state] || esc(r.last.state)) + (r.last.at ? ' — ' + fmtDT(r.last.at) : '') + (r.last.sha ? ' (نسخة ' + esc(r.last.sha) + ')' : ''));
+    if (r.build) L.push('النسخة الشغالة مبنية: ' + fmtDT(r.build));
+    box.innerHTML = L.join('<br>') || '—';
+    if (r.pending || (r.last && ['checking', 'updating'].includes(r.last.state))) setTimeout(loadUpdate, 8000);
+  } catch (e) { box.textContent = 'ما قدرت أقرأ الحالة (ممكن السيرفر يعيد التشغيل الحين — حدّث الصفحة بعد دقيقة)'; setTimeout(loadUpdate, 15000); }
+}
+async function updateNow() { try { const r = await api('/api/admin/update', {}); toast(r.message); loadUpdate(); } catch (e) { toast('⚠️ ' + e.message); } }
+setInterval(() => { if (document.getElementById('updbox') && document.getElementById('updbox').textContent === '⏳') loadUpdate(); }, 1000);
 </script>
 </body>
 </html>

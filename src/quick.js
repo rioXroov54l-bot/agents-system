@@ -303,4 +303,5 @@ async function status() {
 
 const usage = () => require('./health').usageReport();
 
-module.exports = { usage, status, watches, docs, meds, portfolio, assets, routines, payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };
+const update = () => require('./updater').quick();
+module.exports = { update, usage, status, watches, docs, meds, portfolio, assets, routines, payments, today, tasks, money, shop, bills, approvals, evening, weather, prayer, hijri, emails, calendar, scheduled, watched };

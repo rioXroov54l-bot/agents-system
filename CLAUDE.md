@@ -13,7 +13,8 @@
 ## الاستضافة والتشغيل
 - سيرفر **Contabo VPS** (Ubuntu) خاص بالمالك (الـ IP عنده)، المجلد `/opt/sakrtir`، Docker Compose في `deploy/`.
 - لوحة التحكم: `https://app.<IP بشرطات>.sslip.io` (كلمة مرورها عند المالك)، وبنفس الطريقة `n8n.` و`kuma.`.
-- **النشر تلقائي:** أي push على `main` ← السيرفر يسحبه خلال 10 دقايق ويعيد البناء (`deploy/update.sh` عبر cron `/etc/cron.d/sakrtir-update`)، ويشغّل أي خدمة جديدة أو واقفة.
+- **النشر تلقائي:** أي push على `main` ← السيرفر يسحبه خلال 10 دقايق ويعيد البناء (`deploy/update.sh` عبر cron `/etc/cron.d/sakrtir-update` كل دقيقة؛ الفحص الكامل كل 10 دقايق)، ويشغّل أي خدمة جديدة أو واقفة.
+- **«حدّث الآن»** (`updater.js`): المالك يكتب «حدّث الآن» أو يضغط الزر في اللوحة ← ملف `update-now` في `/data` (فوليوم `sakrtir_agents_data`) ← update.sh يشوفه خلال دقيقة ويحدّث، ويكتب النتيجة في `update-status.json`. بعد أي push قل للمالك يكتب «حدّث الآن» بدل ما ينتظر.
 - الخدمات: caddy (HTTPS عبر sslip.io)، postgres 17، redis، agents (Node 22، هذا الكود)، n8n + worker، evolution (واتساب، داخلي)، whisper (تحويل الصوت لنص)، browser (Playwright لوكيل المواقع، في شبكة معزولة browsernet)، uptime-kuma.
 - كان سابقاً على Railway (انتقلنا منه). التثبيت على سيرفر جديد: `deploy/install.sh` + كود نقل من اللوحة (الإعدادات ← النقل لسيرفر جديد).
 - الأسرار في `deploy/.env` على السيرفر فقط (مو في GitHub). لا تطلب من المالك كلمة سر الروت أبداً.
